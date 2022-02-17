@@ -23,11 +23,8 @@ area <- runif(npu, min=0, max=150)
 df <- data.frame(puid, npv, admin.cost, property, prob.property, bid.price, cons.benefit)
 head(df)
 
-#Create benefits 
 #Functions
-#Function to select random properties 
-
-####Function to select properties in order up until the budget constraint
+####Function to select properties in order up until the NPV constraint
 properties <- function(df){
 df_new <- data.frame()
 for (i in 1:length(unique(df$puid))){
