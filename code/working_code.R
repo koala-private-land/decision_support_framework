@@ -23,6 +23,7 @@ area <- runif(npu, min=0, max=150)
 df <- data.frame(puid, npv, admin.cost, property, prob.property, bid.price, cons.benefit)
 head(df)
 
+
 #Functions
 ####Function to select properties in order up until the NPV constraint
 properties <- function(df){
