@@ -1,10 +1,7 @@
 library(gurobi)
 library(dplyr)
-library(OpenStreetMap)
-library(ggplot2)
 library (rgdal)
-library (rgeos)
-library(maptools)
+library(mapmisc)
 
 # #test dataset
 # #Each planning unit is an LGA
@@ -28,6 +25,7 @@ library(maptools)
 # df <- data.frame(puid, npv, admin.cost, property, prob.property, bid.price, cons.benefit)
 # head(df)
 
+setwd("D:/Linkage/DSF code/private_land_conservation_DSF")
 #Remove duplicates -> need to look into why there are duplicates
 load("./preprocessing/df.RData")
 duplicates <- df[duplicated(df), ]
@@ -44,7 +42,7 @@ df <- df[!duplicated(df), ]
 #bid.price
 #cons.benefit
 
-colnames(df) <- c("puid", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit")
+colnames(df) <- c("puid", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "cons.benefit.adj")
 #df <- data.frame(puid = pu.df$LGA, npv = pu.df$NPV, admin.cost = pu.df$admin, property = pu.df$rank, prob.property = pu.df$MeanAdopt, bid.price = pu.df$bid.price, cons.benefit = pu.df$koala.w)
 
 
@@ -66,7 +64,7 @@ for (i in unique(df$puid)){
     #Create a subset which is only those properties lower than the investment amount for the LGA
     df1 <- df1[which(df1$csum < df1[1,]$npv - df1[1,]$admin.cost),]
     #remove cummulative sum column 
-    df1 <- df1[-8]
+    df1 <- df1[-9]
   } else{
     df1 <- df1
   }
@@ -80,19 +78,26 @@ head(df_new)
 View(df_new)
 
 #Get the overall mean for each planning unit/LGA
-df_new.ag <- aggregate(x = df_new[c("npv","admin.cost", "prob.property","bid.price","cons.benefit")], by = df_new[c("puid")], FUN = mean)
+df_new.ag <- aggregate(x = df_new[c("npv","admin.cost", "prob.property","bid.price","cons.benefit", "cons.benefit.adj")], by = df_new[c("puid")], FUN = mean)
 head(df_new.ag)
 
 #F represents the overall funding
-F <- 10000000
+#F <- 10000000
+F <- c(218000000, 193300000, 24700000)
 
+F <- 24700000
+
+##to go through all of the scenarios
+for (i in F){
+
+#Scenario 1
 #Set up the optimisation
 #Select the planning units (LGA's)
 model <- list()
 model$A <- matrix(c(df_new.ag$npv), nrow=1)
-model$obj        <- (df_new.ag$prob.property*df_new.ag$bid.price)*df_new.ag$cons.benefit
+model$obj        <- df_new.ag$cons.benefit
 model$modelsense <- 'max'
-model$rhs        <- c(F)
+model$rhs        <- c(i)
 model$sense      <- c('<')
 model$vtype      <- 'B'
 
@@ -124,7 +129,62 @@ shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
 # shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
 # plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
 
-png(file=paste0("./outfoldermaps/Selected_LGAs.png"), width=1000, height=1000)
+png(file=paste0("./outfoldermaps/scen_1_budget_", i, ".png"), width=1000, height=1000)
+par(mar=c(0,0,0,0))
+#plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
+plot(shp.pu)
+shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
+plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
+cex <- 1
+scaleBar(shp.pu.sub, pos = "bottomleft",   
+         cex=1,
+         pt.cex = 1.1*cex,
+         seg.len=10*cex,
+         title.cex=cex,
+         outer=FALSE)
+#suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
+dev.off()
+
+#Scenario 2
+#Set up the optimisation
+#Select the planning units (LGA's)
+model <- list()
+model$A <- matrix(c(df_new.ag$npv), nrow=1)
+model$obj        <- df_new.ag$prob.property*df_new.ag$bid.price
+model$modelsense <- 'max'
+model$rhs        <- c(i)
+model$sense      <- c('<')
+model$vtype      <- 'B'
+
+params <- list(OutputFlag=0)
+
+#Run
+result <- gurobi(model, params)
+
+print('Solution:')
+print(result$objval)
+print(result$x)
+
+###Need to be careful about indexing here
+solution <- data.frame(df_new.ag$puid, result$x)
+selected_pus <- solution$df_new.ag.puid[solution$result.x==1]
+selected_pus
+
+###Create code to export maps
+setwd("D:/Linkage/DSF code/private_land_conservation_DSF/")
+# create folder:
+if (!dir.exists("outfoldermaps")){
+  dir.create("outfoldermaps", recursive = TRUE)
+} else {
+  print("Dir already exists!")
+}
+
+shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
+# plot(shp.pu)
+# shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
+# plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
+
+png(file=paste0("./outfoldermaps/scen_2_budget_", i, ".png"), width=1000, height=1000)
 par(mar=c(0,0,0,0))
 #plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
 plot(shp.pu)
@@ -133,3 +193,148 @@ plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
 #suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
 dev.off()
 
+#Scenario 3
+#Set up the optimisation
+#Select the planning units (LGA's)
+model <- list()
+model$A <- matrix(c(df_new.ag$npv), nrow=1)
+model$obj        <- (df_new.ag$prob.property*df_new.ag$bid.price)*df_new.ag$cons.benefit
+model$modelsense <- 'max'
+model$rhs        <- c(i)
+model$sense      <- c('<')
+model$vtype      <- 'B'
+
+params <- list(OutputFlag=0)
+
+#Run
+result <- gurobi(model, params)
+
+print('Solution:')
+print(result$objval)
+print(result$x)
+
+###Need to be careful about indexing here
+solution <- data.frame(df_new.ag$puid, result$x)
+selected_pus <- solution$df_new.ag.puid[solution$result.x==1]
+selected_pus
+
+###Create code to export maps
+setwd("D:/Linkage/DSF code/private_land_conservation_DSF/")
+# create folder:
+if (!dir.exists("outfoldermaps")){
+  dir.create("outfoldermaps", recursive = TRUE)
+} else {
+  print("Dir already exists!")
+}
+
+shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
+# plot(shp.pu)
+# shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
+# plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
+
+png(file=paste0("./outfoldermaps/scen_3_budget_", i, ".png"), width=1000, height=1000)
+par(mar=c(0,0,0,0))
+#plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
+plot(shp.pu)
+shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
+plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
+#suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
+dev.off()
+
+#Scenario 4
+#Set up the optimisation
+#Select the planning units (LGA's)
+model <- list()
+model$A <- matrix(c(df_new.ag$npv), nrow=1)
+model$obj        <- df_new.ag$cons.benefit.adj
+model$modelsense <- 'max'
+model$rhs        <- c(i)
+model$sense      <- c('<')
+model$vtype      <- 'B'
+
+params <- list(OutputFlag=0)
+
+#Run
+result <- gurobi(model, params)
+
+print('Solution:')
+print(result$objval)
+print(result$x)
+
+###Need to be careful about indexing here
+solution <- data.frame(df_new.ag$puid, result$x)
+selected_pus <- solution$df_new.ag.puid[solution$result.x==1]
+selected_pus
+
+###Create code to export maps
+setwd("D:/Linkage/DSF code/private_land_conservation_DSF/")
+# create folder:
+if (!dir.exists("outfoldermaps")){
+  dir.create("outfoldermaps", recursive = TRUE)
+} else {
+  print("Dir already exists!")
+}
+
+shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
+# plot(shp.pu)
+# shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
+# plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
+
+png(file=paste0("./outfoldermaps/scen_4_budget_", i, ".png"), width=1000, height=1000)
+par(mar=c(0,0,0,0))
+#plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
+plot(shp.pu)
+shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
+plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
+#suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
+dev.off()
+
+#Scenario 5
+#Set up the optimisation
+#Select the planning units (LGA's)
+model <- list()
+model$A <- matrix(c(df_new.ag$npv), nrow=1)
+model$obj        <- (df_new.ag$prob.property*df_new.ag$bid.price)*df_new.ag$cons.benefit.adj
+model$modelsense <- 'max'
+model$rhs        <- c(i)
+model$sense      <- c('<')
+model$vtype      <- 'B'
+
+params <- list(OutputFlag=0)
+
+#Run
+result <- gurobi(model, params)
+
+print('Solution:')
+print(result$objval)
+print(result$x)
+
+###Need to be careful about indexing here
+solution <- data.frame(df_new.ag$puid, result$x)
+selected_pus <- solution$df_new.ag.puid[solution$result.x==1]
+selected_pus
+
+###Create code to export maps
+setwd("D:/Linkage/DSF code/private_land_conservation_DSF/")
+# create folder:
+if (!dir.exists("outfoldermaps")){
+  dir.create("outfoldermaps", recursive = TRUE)
+} else {
+  print("Dir already exists!")
+}
+
+shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
+# plot(shp.pu)
+# shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
+# plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
+
+png(file=paste0("./outfoldermaps/scen_5_budget_", i, ".png"), width=1000, height=1000)
+par(mar=c(0,0,0,0))
+#plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
+plot(shp.pu)
+shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
+plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
+#suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
+dev.off()
+
+}

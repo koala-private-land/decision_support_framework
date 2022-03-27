@@ -10,6 +10,8 @@ library(terra)
 library(rgeos)
 library(gurobi)
 library(exactextractr)
+library(remotes)
+library(climateStability)
 
 setwd("D:/Linkage/DSF code/private_land_conservation_DSF/")
 
@@ -189,6 +191,23 @@ load("./preprocessing/pnts_risk_v3.RData")
 #pu.df <- cbind(pu.df, pnts_risk$Label)
 
 
+#########Climate change risk#######
+#https://rdrr.io/github/johnbaums/things/man/gdal_sd.html 
+#Create raster stack
+setwd("D:/Linkage/Data/Climate change koala habitat/Adelotus_brevis/Adelotus_brevis/All")
+file_list = list.files(pattern = ".asc$", full.names = T, recursive = T)
+r.stack <- raster::stack(file_list)
+sdR <- calc(r.stack, fun = sd)
+crs(sdR) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0" 
+#https://search.r-project.org/CRAN/refmans/climateStability/html/rescale0to1.html
+sdR_proj <- projectRaster(sdR, crs = crs(properties))
+relativeClimateStability <- rescale0to1(sdR_proj)
+relativeClimateStability_inv <- (relativeClimateStability*-1)+1
+prop_sd_cc <- zonal.stats(properties, relativeClimateStability_inv, stats="mean")
+prop_sd_cc <- data.frame(properties$propid, prop_sd_cc)
+save(prop_sd_cc, file="./preprocessing/prop_sd_cc.RData")
+load("./preprocessing/prop_sd_cc.RData")
+
 #Some of this can be tied together and some of it has to be merged
 pu.df <- data.frame(propid=propid, area=area, risk = pnts_risk_v3)
 colnames(pu.df) <- c("propid", "area", "risk")
@@ -208,9 +227,12 @@ merged <- merge(merged, dist_cov_prop, by='propid')
 #dist_pa_prop
 colnames(dist_pa_prop) <- c("propid", "dist_pa")
 merged <- merge(merged, dist_pa_prop, by='propid')
+#prop_sd_cc
+colnames(prop_sd_cc) <- c("propid", "sd_cc")
+merged <- merge(merged, prop_sd_cc, by='propid')
 
-#pu.df <- merged[c("propid", "area", "cond.x", "connect.x", "risk", "dist_cov", "dist_pa",  cond=risk = pnts_risk_v3, dist_cov = dist_cov_prop, dist_pa = dist_pa_prop)]
-colnames(pu.df) <- c("propid", "area", "risk", "cond", "connect", "dist_cov", "dist_pa")
+#pu.df <- merged[c("propid", "area", "cond.x", "connect.x", "risk", "dist_cov", "dist_pa",  cond=risk = pnts_risk_v3, dist_cov = dist_cov_prop, dist_pa = dist_pa_prop, sd_cc = sd_cc)]
+#colnames(pu.df) <- c("propid", "area", "risk", "cond", "connect", "dist_cov", "dist_pa", "sd_cc")
 
 ###Need to add LGA. 
 properties.dbf <- read.dbf("./preprocessing/LGA_properties_intersection_CADID_retained.dbf", as.is = FALSE)
@@ -219,13 +241,13 @@ properties.dbf_LGA <- properties.dbf[c("propid", "CADID")]
 #Remove duplicates
 properties.dbf_LGA <- properties.dbf_LGA[!duplicated(properties.dbf_LGA), ]
 merged <- merge(merged, properties.dbf_LGA, by='propid')
-pu.df <- merged[c("CADID", "propid", "area", "cond", "connect", "risk", "dist_cov", "dist_pa")]
+pu.df <- merged[c("CADID", "propid", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "sd_cc")]
 
 ##Up to here, redoing the Koala values for the dissolved layer
 ##Add the koala/conservation values
 merged <- merge(pu.df, koala, by='propid')
-pu.df <- merged[c("CADID", "propid", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "k_area")]
-colnames(pu.df) <- c("LGA", "propid", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala")
+pu.df <- merged[c("CADID", "propid", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "sd_cc", "k_area")]
+colnames(pu.df) <- c("LGA", "propid", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "sd_cc", "koala")
 
 #Do the ranking formula
 pu.df$rank <- (pu.df$cond*pu.df$koala*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
@@ -254,8 +276,8 @@ merged <- merge(properties_prob.ag, MeanWTA.tot, by='propid')
 
 #Merge with main dataframe
 merged <- merge(pu.df, merged, by='propid')
-pu.df <- merged[c("LGA", "propid", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala", "rank","MeanAdopt", "MeanWTA.tot", "MeanProp")]
-colnames(pu.df) <- c("LGA", "propid", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala", "rank", "prob.property", "bid.price", "MeanProp")
+pu.df <- merged[c("LGA", "propid", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "sd_cc", "koala", "rank","MeanAdopt", "MeanWTA.tot", "MeanProp")]
+colnames(pu.df) <- c("LGA", "propid", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "sd_cc", "koala", "rank", "prob.property", "bid.price", "MeanProp")
 pu.df$koala.w <- pu.df$koala*pu.df$MeanProp
 
 #checks
@@ -277,18 +299,16 @@ merged <- merge(pu.df, npv.df, by='LGA')
 merged$admin <- 1
 pu.df <- merged
 
+#Add the adjusted conservation value
+pu.df$koala_adj <- pu.df$koala.w*pu.df$sd_cc
+
 save(pu.df, file="./preprocessing/pu.df.RData")
 load("./preprocessing/pu.df.RData")
 
 #Make the final df for the optimisation
 
-df <- pu.df[c("LGA", "NPV", "admin", "rank", "prob.property", "bid.price", "koala.w")]
+df <- pu.df[c("LGA", "NPV", "admin", "rank", "prob.property", "bid.price", "koala.w", "koala_adj")]
 save(df, file="./preprocessing/df.RData")
-
-
-
-
-
 
 
 
