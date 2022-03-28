@@ -87,9 +87,14 @@ F <- c(218000000, 193300000, 24700000)
 
 F <- 24700000
 
-##to go through all of the scenarios
-for (i in F){
+#
+F <- 24700000
 
+##to go through all of the scenarios
+#Load in base shp file
+shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
+
+for (i in F){
 #Scenario 1
 #Set up the optimisation
 #Select the planning units (LGA's)
@@ -112,8 +117,8 @@ print(result$x)
 
 ###Need to be careful about indexing here
 solution <- data.frame(df_new.ag$puid, result$x)
-selected_pus <- solution$df_new.ag.puid[solution$result.x==1]
-selected_pus
+selected_pus_scen1 <- solution$df_new.ag.puid[solution$result.x==1]
+selected_pus_scen1
 
 ###Create code to export maps
 setwd("D:/Linkage/DSF code/private_land_conservation_DSF/")
@@ -124,16 +129,11 @@ if (!dir.exists("outfoldermaps")){
   print("Dir already exists!")
 }
 
-shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
-# plot(shp.pu)
-# shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
-# plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
-
 png(file=paste0("./outfoldermaps/scen_1_budget_", i, ".png"), width=1000, height=1000)
 par(mar=c(0,0,0,0))
 #plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
 plot(shp.pu)
-shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
+shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus_scen1),]
 plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
 cex <- 1
 scaleBar(shp.pu.sub, pos = "bottomleft",   
@@ -167,8 +167,8 @@ print(result$x)
 
 ###Need to be careful about indexing here
 solution <- data.frame(df_new.ag$puid, result$x)
-selected_pus <- solution$df_new.ag.puid[solution$result.x==1]
-selected_pus
+selected_pus_scen2 <- solution$df_new.ag.puid[solution$result.x==1]
+selected_pus_scen2
 
 ###Create code to export maps
 setwd("D:/Linkage/DSF code/private_land_conservation_DSF/")
@@ -179,16 +179,12 @@ if (!dir.exists("outfoldermaps")){
   print("Dir already exists!")
 }
 
-shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
-# plot(shp.pu)
-# shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
-# plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
 
 png(file=paste0("./outfoldermaps/scen_2_budget_", i, ".png"), width=1000, height=1000)
 par(mar=c(0,0,0,0))
 #plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
 plot(shp.pu)
-shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
+shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus_scen2),]
 plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
 #suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
 dev.off()
@@ -215,8 +211,8 @@ print(result$x)
 
 ###Need to be careful about indexing here
 solution <- data.frame(df_new.ag$puid, result$x)
-selected_pus <- solution$df_new.ag.puid[solution$result.x==1]
-selected_pus
+selected_pus_scen3 <- solution$df_new.ag.puid[solution$result.x==1]
+selected_pus_scen3
 
 ###Create code to export maps
 setwd("D:/Linkage/DSF code/private_land_conservation_DSF/")
@@ -227,16 +223,11 @@ if (!dir.exists("outfoldermaps")){
   print("Dir already exists!")
 }
 
-shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
-# plot(shp.pu)
-# shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
-# plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
-
 png(file=paste0("./outfoldermaps/scen_3_budget_", i, ".png"), width=1000, height=1000)
 par(mar=c(0,0,0,0))
 #plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
 plot(shp.pu)
-shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
+shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus_scen3),]
 plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
 #suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
 dev.off()
@@ -263,8 +254,8 @@ print(result$x)
 
 ###Need to be careful about indexing here
 solution <- data.frame(df_new.ag$puid, result$x)
-selected_pus <- solution$df_new.ag.puid[solution$result.x==1]
-selected_pus
+selected_pus_scen4 <- solution$df_new.ag.puid[solution$result.x==1]
+selected_pus_scen4
 
 ###Create code to export maps
 setwd("D:/Linkage/DSF code/private_land_conservation_DSF/")
@@ -275,16 +266,11 @@ if (!dir.exists("outfoldermaps")){
   print("Dir already exists!")
 }
 
-shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
-# plot(shp.pu)
-# shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
-# plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
-
 png(file=paste0("./outfoldermaps/scen_4_budget_", i, ".png"), width=1000, height=1000)
 par(mar=c(0,0,0,0))
 #plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
 plot(shp.pu)
-shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
+shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus_scen4),]
 plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
 #suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
 dev.off()
@@ -311,8 +297,8 @@ print(result$x)
 
 ###Need to be careful about indexing here
 solution <- data.frame(df_new.ag$puid, result$x)
-selected_pus <- solution$df_new.ag.puid[solution$result.x==1]
-selected_pus
+selected_pus_scen5 <- solution$df_new.ag.puid[solution$result.x==1]
+selected_pus_scen5
 
 ###Create code to export maps
 setwd("D:/Linkage/DSF code/private_land_conservation_DSF/")
@@ -323,18 +309,60 @@ if (!dir.exists("outfoldermaps")){
   print("Dir already exists!")
 }
 
-shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
-# plot(shp.pu)
-# shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
-# plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
-
 png(file=paste0("./outfoldermaps/scen_5_budget_", i, ".png"), width=1000, height=1000)
 par(mar=c(0,0,0,0))
 #plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
 plot(shp.pu)
-shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus),]
+shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus_scen5),]
 plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
 #suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
 dev.off()
 
+png(file=paste0("./outfoldermaps/All_", i, ".png"), width=1000, height=1000)
+par(mar=c(0,0,0,0))
+#plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
+plot(shp.pu)
+common <- Reduce(intersect, list(selected_pus_scen1, selected_pus_scen2, selected_pus_scen3, selected_pus_scen4, selected_pus_scen5))
+shp.common <- shp.pu[shp.pu$CADID %in% c(common),]
+plot(shp.common, col = "seagreen3", add = TRUE)
+scaleBar(shp.pu.sub, pos = "bottomleft",   
+         cex=1,
+         pt.cex = 1.1*cex,
+         seg.len=10*cex,
+         title.cex=cex,
+         outer=FALSE)
+# #suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
+dev.off()
+
+png(file=paste0("./outfoldermaps/diff_scen3_5_budget_", i, ".png"), width=1000, height=1000)
+par(mar=c(0,0,0,0))
+#plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
+plot(shp.pu)
+common <- Reduce(intersect, list(selected_pus_scen3,selected_pus_scen5))
+shp.common <- shp.pu[shp.pu$CADID %in% c(common),]
+plot(shp.common, col = "seagreen3", add = TRUE)
+onlyscen3 <- selected_pus_scen3[!selected_pus_scen3 %in% selected_pus_scen5]
+shp.onlyscen3 <- shp.pu[shp.pu$CADID %in% c(onlyscen3),]
+plot(shp.onlyscen3, col = "mistyrose2", add = TRUE)
+onlyscen5 <- selected_pus_scen5[!selected_pus_scen5 %in% selected_pus_scen3]
+shp.onlyscen5 <- shp.pu[shp.pu$CADID %in% c(onlyscen5),]
+plot(shp.onlyscen5, col = "slategray2", add = TRUE)
+scaleBar(shp.pu.sub, pos = "bottomleft",   
+         cex=1,
+         pt.cex = 1.1*cex,
+         seg.len=10*cex,
+         title.cex=cex,
+         outer=FALSE)
+# #suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
+dev.off()
+
+png(file=paste0("./outfoldermaps/scatter_feasibility_vs_cons_", i, ".png"), width=1000, height=1000)
+#par(mar=c(0,0,0,0))
+plot(df_new$prob.property, df_new$cons.benefit, xlab = "Social Feasibility", ylab = "Conservation benefit", cex.lab=1.5)
+dev.off()
+
+png(file=paste0("./outfoldermaps/scatter_feasibility_vs_cons_cc_", i, ".png"), width=1000, height=1000)
+#par(mar=c(0,0,0,0))
+plot(df_new$prob.property, df_new$cons.benefit.adj, xlab = "Social Feasibility", ylab = "Conservation benefit - cc risk adjusted", cex.lab=1.5)
+dev.off()
 }
