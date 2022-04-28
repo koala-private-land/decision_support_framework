@@ -42,35 +42,65 @@ df <- df[!duplicated(df), ]
 #bid.price
 #cons.benefit
 
-colnames(df) <- c("puid", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "cons.benefit.adj")
+colnames(df) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "cons.benefit.adj")
 #df <- data.frame(puid = pu.df$LGA, npv = pu.df$NPV, admin.cost = pu.df$admin, property = pu.df$rank, prob.property = pu.df$MeanAdopt, bid.price = pu.df$bid.price, cons.benefit = pu.df$koala.w)
 
+##For testing
+df$npv <- df$npv*20
 
 #Functions
 ####Function to select properties in order up until the NPV constraint
 properties <- function(df){
 df_new <- data.frame()
+#i <- unique(df$puid)[6]
 for (i in unique(df$puid)){
   #for (i in df$puid){
-  df1 <- df[which(df$puid == paste0(i)),] 
-  # #####Constrint to ensure that the selected properties do not exceed the allocated funding for each LGA (NPV)
+  df1 <- df[which(df$puid == paste0(i)),]
+  
+  #Select only the first 30 for site assessment
+  #We can do this in many different ways, but lets order them by highest to lowest probability that someone will put in a bid
+  if (dim(df1)[1] > 30) {
+    df1$int.ass <- df1$cons.benefit*df1$prob.property
+    df1 <- df1[order(-df1$int.ass),]
+    df1 <- df1[1:30,]
+    #df1 <- df1[-9]
+    df1 <- select(df1, -int.ass)
+  } else {
+    df1 <- df1
+  }
+  
+  #Need to add a further constraint to ensure that the selected properties do not exceed the allocated funding for each LGA (NPV)
   if (sum(df1$bid.price) > df1[1,]$npv - df1[1,]$admin.cost) {
     #Place in the order reflecting the BCT prioritisation process
     df1 <- df1[order(df1$property),]
-    #Create a new column that is the cummulative sum of bid price
+    #Create a new column that is the cumulative sum of bid price
     df1 <- df1 %>% group_by(puid) %>% mutate(csum = cumsum(df1$bid.price))
     #Turn into a dataframe
     df1 <- as.data.frame(df1)
     #Create a subset which is only those properties lower than the investment amount for the LGA
     df1 <- df1[which(df1$csum < df1[1,]$npv - df1[1,]$admin.cost),]
-    #remove cummulative sum column 
-    df1 <- df1[-9]
+    #remove cumulative sum column 
+    #df1 <- df1[-9]
+    df1 <- select(df1, -csum)
   } else{
+    df1 <- df1
+  }
+  
+  #Next select 10-15 sites that are likely to put in a bit after site assessment
+  #We base this on ranking metric (benefits)/bid price - this is the benefit cost ratio
+  if (dim(df1)[1] > 15) {
+    df1$bcr <- df1$property/df1$bid.price
+    df1 <- df1[order(-df1$bcr),]
+    df1 <- df1[1:15,] 
+    #df1 <- df1[-9]
+    df1 <- select(df1, -bcr)
+  } else {
     df1 <- df1
   }
   df_new <- rbind(df_new, df1)
 }
 return(df_new)
+#print("complete")
 }
 
 df_new <- properties(df)  
@@ -83,12 +113,17 @@ head(df_new.ag)
 
 #F represents the overall funding
 #F <- 10000000
-F <- c(218000000, 193300000, 24700000)
+F <- c(101500000, 20300000, 15200000)
+F <- 15200000
 
-F <- 24700000
+#Weight matrix
+nweights=10
+evaluation_weight=0.5
+weightm <- matrix(0, nrow=nweights, ncol=length(F))
+weightm[1,] <- 1
+weightm[3,] <- evaluation_weight
 
-#
-F <- 24700000
+c(weightm[w,t], 1 - weightm[w,t])
 
 ##to go through all of the scenarios
 #Load in base shp file
