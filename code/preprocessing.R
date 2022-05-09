@@ -7,7 +7,6 @@ library(maptools)
 library(foreign)
 library(spatialEco)
 library(terra)
-library(rgeos)
 library(gurobi)
 library(exactextractr)
 library(remotes)
@@ -33,7 +32,7 @@ setwd("D:/Linkage/DSF code/private_land_conservation_DSF/")
 #plot(properties)
 
 #Load dissolved property layer
-properties <- readOGR("./preprocessing/Properties_dissolved.shp")
+properties <- readOGR("./preprocessing/Properties_NewPropID.shp")
 crs <- proj4string(properties)
 save(properties, file = "./preprocessing/properties.RData")
 load("./preprocessing/properties.RData")
@@ -84,7 +83,7 @@ save(pnts_properties, file="./preprocessing/pnts_properties.RData")
 load("./preprocessing/pnts_properties.RData")
 head(pnts_properties)
 
-propid <- pnts_properties$propid
+propid <- pnts_properties$NewPropID
 #Get area - note are in shp file has to be correct, check first in ArcMap
 #This is m2
 area <- pnts_properties$Shape_Area
@@ -113,7 +112,7 @@ cond_rast <- raster("./raw_data/bba_31a_cond_V2_nsw_raw.tif")
 cond <- zonal.stats(properties, cond_rast, stats="mean")
 #Could be faster
 #cond <- extract(cond_rast, properties, "mean") 
-cond <- data.frame(properties$propid, cond)
+cond <- data.frame(properties$NewPropID, cond)
 save(cond, file="./preprocessing/cond.RData")
 load("./preprocessing/cond.RData")
 
@@ -121,14 +120,13 @@ load("./preprocessing/cond.RData")
 connect_rast <- raster("./raw_data/bba_31b_connectivity_V2_nsw_raw.tif")
 #crs <- crs(connect_rast)
 
-#apply a 1500m buffer aroud each site
+#apply a 1500m buffer around each site
 #have to do this on either a server or in QGIS
 #properties_buff_1500m <- gBuffer(properties, width=1500) 
 properties_buff_1500m <- readOGR("./preprocessing/Properties_buffered.shp")
-
 connect <- zonal.stats(properties_buff_1500m, connect_rast, stats="mean")
 #connect <- extract(connect_rast, properties_buff_1500m, fun='mean') 
-connect <- data.frame(properties_buff_1500m$propid, connect)
+connect <- data.frame(properties_buff_1500m$NewPropID, connect)
 save(connect, file="./preprocessing/connect.RData")
 load("./preprocessing/connect.RData")
 
@@ -148,7 +146,7 @@ dist_cov <- projectRaster(dist_cov, crs = crs(properties_buff_1500m))
 writeRaster(dist_cov,'./preprocessing/dist_cov_m.tif', overwrite=TRUE)
 dist_cov <- raster("./preprocessing/dist_cov_m.tif")
 dist_cov_prop <- zonal.stats(properties, dist_cov, stats="mean")
-dist_cov_prop <- data.frame(properties$propid, dist_cov_prop)
+dist_cov_prop <- data.frame(properties$NewPropID, dist_cov_prop)
 save(dist_cov_prop, file="./preprocessing/dist_cov_prop.RData")
 load("./preprocessing/dist_cov_prop.RData")
 
@@ -164,7 +162,7 @@ dist_pa <- projectRaster(dist_pa, crs = crs(properties_buff_1500m))
 writeRaster(dist_pa,'./preprocessing/dist_pa_m.tif', overwrite=TRUE)
 dist_pa <- raster("./preprocessing/dist_pa_m.tif") 
 dist_pa_prop <- zonal.stats(properties, dist_pa, stats="mean")
-dist_pa_prop <- data.frame(properties$propid, dist_pa_prop)
+dist_pa_prop <- data.frame(properties$NewPropID, dist_pa_prop)
 save(dist_pa_prop, file="./preprocessing/dist_pa_prop.RData")
 load("./preprocessing/dist_pa_prop.RData")
 
@@ -190,64 +188,94 @@ save(pnts_risk_v3, file="./preprocessing/pnts_risk_v3.RData")
 load("./preprocessing/pnts_risk_v3.RData")
 #pu.df <- cbind(pu.df, pnts_risk$Label)
 
-
 #########Climate change risk#######
 #https://rdrr.io/github/johnbaums/things/man/gdal_sd.html 
 #Create raster stack
 setwd("D:/Linkage/Data/Climate change koala habitat/Adelotus_brevis/Adelotus_brevis/All")
 file_list = list.files(pattern = ".asc$", full.names = T, recursive = T)
 r.stack <- raster::stack(file_list)
-sdR <- calc(r.stack, fun = sd)
-crs(sdR) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0" 
-#https://search.r-project.org/CRAN/refmans/climateStability/html/rescale0to1.html
-sdR_proj <- projectRaster(sdR, crs = crs(properties))
-relativeClimateStability <- rescale0to1(sdR_proj)
-relativeClimateStability_inv <- (relativeClimateStability*-1)+1
-prop_sd_cc <- zonal.stats(properties, relativeClimateStability_inv, stats="mean")
-prop_sd_cc <- data.frame(properties$propid, prop_sd_cc)
-save(prop_sd_cc, file="./preprocessing/prop_sd_cc.RData")
-load("./preprocessing/prop_sd_cc.RData")
+# sdR <- calc(r.stack, fun = sd)
+meanR <- calc(r.stack, fun = mean)
+# crs(sdR) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+crs(meanR) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+# #https://search.r-project.org/CRAN/refmans/climateStability/html/rescale0to1.html
+# sdR_proj <- projectRaster(sdR, crs = crs(properties))
+meanR_proj <- projectRaster(meanR, crs = crs(properties))
+# relativeClimateStability <- rescale0to1(sdR_proj)
+# relativeClimateStability_inv <- (relativeClimateStability*-1)+1
+plot(meanR_proj)
+r = meanR_proj
+r[r<0.5] <- 0
+r[r>=0.5] <- 1
+# prop_sd_cc <- zonal.stats(properties, relativeClimateStability_inv, stats="mean")
+# prop_sd_cc <- data.frame(properties$propid, prop_sd_cc)
+# save(prop_sd_cc, file="./preprocessing/prop_sd_cc.RData")
+# load("./preprocessing/prop_sd_cc.RData")
+prop_mean_cc <- zonal.stats(properties, r, stats="mean")
+prop_mean_cc <- data.frame(properties$NewPropID, prop_mean_cc)
+save(prop_mean_cc, file="D:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/prop_mean_cc.RData")
+load("./preprocessing/prop_mean_cc.RData")
 
+###IF EVERYTHING IS PROCESSED CAN SKIP TO HERE#########
+#Merge everything together to create the table
+#Load everything in 
+load("./preprocessing/pnts_properties.RData")
+propid <- pnts_properties$NewPropID
+#This is m2
+area <- pnts_properties$Shape_Area
+koala <- read.csv("./preprocessing/propid_koalahabitat.csv")
+load("./preprocessing/cond.RData")
+load("./preprocessing/connect.RData")
+load("./preprocessing/dist_cov_prop.RData")
+load("./preprocessing/dist_pa_prop.RData")
+load("./preprocessing/pnts_risk_v3.RData")
+load("./preprocessing/prop_mean_cc.RData")
+
+setwd("D:/Linkage/DSF code/private_land_conservation_DSF/")
 #Some of this can be tied together and some of it has to be merged
-pu.df <- data.frame(propid=propid, area=area, risk = pnts_risk_v3)
-colnames(pu.df) <- c("propid", "area", "risk")
-pu.df = pu.df[pu.df$propid > 0,]
+pu.df <- data.frame(NewPropID=propid, area=area, risk = pnts_risk_v3)
+colnames(pu.df) <- c("NewPropID", "area", "risk")
+pu.df = pu.df[pu.df$NewPropID > 0,]
+head(pu.df)
 
 #cond
-colnames(cond) <- c("propid", "cond")
-cond = cond[cond$propid > 0,]
-merged <- merge(pu.df, cond, by='propid')
+colnames(cond) <- c("NewPropID", "cond")
+cond = cond[cond$NewPropID > 0,]
+merged <- merge(pu.df, cond, by='NewPropID')
+head(merged)
 #connect
-colnames(connect) <- c("propid", "connect")
-connect = connect[connect$propid > 0,]
-merged <- merge(merged, connect, by='propid')
+colnames(connect) <- c("NewPropID", "connect")
+connect = connect[connect$NewPropID > 0,]
+merged <- merge(merged, connect, by='NewPropID')
+head(merged)
 #dist_cov_prop
-colnames(dist_cov_prop) <- c("propid", "dist_cov")
-merged <- merge(merged, dist_cov_prop, by='propid')
+colnames(dist_cov_prop) <- c("NewPropID", "dist_cov")
+merged <- merge(merged, dist_cov_prop, by='NewPropID')
+head(merged)
 #dist_pa_prop
-colnames(dist_pa_prop) <- c("propid", "dist_pa")
-merged <- merge(merged, dist_pa_prop, by='propid')
+colnames(dist_pa_prop) <- c("NewPropID", "dist_pa")
+merged <- merge(merged, dist_pa_prop, by='NewPropID')
+head(merged)
 #prop_sd_cc
-colnames(prop_sd_cc) <- c("propid", "sd_cc")
-merged <- merge(merged, prop_sd_cc, by='propid')
-
+colnames(prop_mean_cc) <- c("NewPropID", "mean_cc")
+merged <- merge(merged, prop_mean_cc, by='NewPropID')
+head(merged)
 #pu.df <- merged[c("propid", "area", "cond.x", "connect.x", "risk", "dist_cov", "dist_pa",  cond=risk = pnts_risk_v3, dist_cov = dist_cov_prop, dist_pa = dist_pa_prop, sd_cc = sd_cc)]
 #colnames(pu.df) <- c("propid", "area", "risk", "cond", "connect", "dist_cov", "dist_pa", "sd_cc")
 
-###Need to add LGA. 
+###Created this LGA intersected with properties layer in Arcmap 
 properties.dbf <- read.dbf("./preprocessing/LGA_properties_intersection_CADID_retained.dbf", as.is = FALSE)
 #Pull out just LGA's
-properties.dbf_LGA <- properties.dbf[c("propid", "CADID")]
+properties.dbf_LGA <- properties.dbf[c("NewPropID", "CADID")]
 #Remove duplicates
 properties.dbf_LGA <- properties.dbf_LGA[!duplicated(properties.dbf_LGA), ]
-merged <- merge(merged, properties.dbf_LGA, by='propid')
-pu.df <- merged[c("CADID", "propid", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "sd_cc")]
+merged <- merge(merged, properties.dbf_LGA, by='NewPropID')
+pu.df <- merged[c("CADID", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "mean_cc")]
 
-##Up to here, redoing the Koala values for the dissolved layer
 ##Add the koala/conservation values
-merged <- merge(pu.df, koala, by='propid')
-pu.df <- merged[c("CADID", "propid", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "sd_cc", "k_area")]
-colnames(pu.df) <- c("LGA", "propid", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "sd_cc", "koala")
+merged <- merge(pu.df, koala, by='NewPropID')
+pu.df <- merged[c("CADID", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "mean_cc", "AREA")]
+colnames(pu.df) <- c("LGA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "mean_cc", "koala")
 
 #Do the ranking formula
 pu.df$rank <- (pu.df$cond*pu.df$koala*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
@@ -257,8 +285,8 @@ pu.df$rank <- (pu.df$cond*pu.df$koala*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$
 #LGA_prop_intersect <- readOGR("./preprocessing/LGA_properties_intersection_CADID_retained.shp")
 #Just for the table
 LGA_prop_intersect.dbf <- read.dbf("./preprocessing/LGA_properties_intersection_CADID_retained.dbf", as.is = FALSE)
-colnames(LGA_prop_intersect.dbf)[3] <- "CADID_LGA"
-colnames(LGA_prop_intersect.dbf)[21] <- "CADID"
+colnames(LGA_prop_intersect.dbf)[4] <- "CADID_LGA"
+colnames(LGA_prop_intersect.dbf)[27] <- "CADID"
 #properties.dbf_cost <- properties.dbf[c("propid", "LValHa")]
 #properties.dbf_ag <- aggregate(properties.dbf_cost, by = list(properties.dbf$propid), FUN = "sum")
 
@@ -268,17 +296,18 @@ properties_prob <- merge(LGA_prop_intersect.dbf, probs, by='CADID')
 ####Need to turn bid price into total. WTA == $1000/ha/yr 
 properties_prob$MeanWTA.tot <- properties_prob$Area_H*properties_prob$MeanProp*properties_prob$MeanWTA*1000
 ##All of this aggregating won't be necessary with Jonathan's new predictions which are at the "propid" level
-MeanWTA.tot <- aggregate(x = properties_prob[c("MeanWTA.tot")], by = properties_prob[c("propid")], FUN = sum)
-MeanWTA.tot <- MeanWTA.tot[MeanWTA.tot$propid > 0,]
-properties_prob.ag <- aggregate(x = properties_prob[c("MeanAdopt", "MeanProp")], by = properties_prob[c("propid")], FUN = mean)
-properties_prob.ag <- properties_prob.ag[properties_prob.ag$propid > 0,]
-merged <- merge(properties_prob.ag, MeanWTA.tot, by='propid')
+MeanWTA.tot <- aggregate(x = properties_prob[c("MeanWTA.tot")], by = properties_prob[c("NewPropID")], FUN = sum)
+MeanWTA.tot <- MeanWTA.tot[MeanWTA.tot$NewPropID > 0,]
+properties_prob.ag <- aggregate(x = properties_prob[c("MeanAdopt", "MeanProp")], by = properties_prob[c("NewPropID")], FUN = mean)
+properties_prob.ag <- properties_prob.ag[properties_prob.ag$NewPropID > 0,]
+merged <- merge(properties_prob.ag, MeanWTA.tot, by='NewPropID')
 
 #Merge with main dataframe
-merged <- merge(pu.df, merged, by='propid')
-pu.df <- merged[c("LGA", "propid", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "sd_cc", "koala", "rank","MeanAdopt", "MeanWTA.tot", "MeanProp")]
-colnames(pu.df) <- c("LGA", "propid", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "sd_cc", "koala", "rank", "prob.property", "bid.price", "MeanProp")
+merged <- merge(pu.df, merged, by='NewPropID')
+pu.df <- merged[c("LGA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "mean_cc", "koala", "rank","MeanAdopt", "MeanWTA.tot", "MeanProp")]
+colnames(pu.df) <- c("LGA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "mean_cc", "koala", "rank", "prob.property", "bid.price", "MeanProp")
 pu.df$koala.w <- pu.df$koala*pu.df$MeanProp
+pu.df$koala.cc.w <- pu.df$mean_cc*pu.df$MeanProp
 
 #checks
 #This should be zero
@@ -293,27 +322,22 @@ cost$maxtot <- cost$total_area*cost$max_cost_ha
 
 length(unique(pu.df$LGA))
 lga <- unique(pu.df$LGA)
-npv <- rep(c(runif(c(1:99), min=mean(cost$mintot), max=mean(cost$maxtot))))
+npv <- rep(c(runif(c(1:98), min=mean(cost$mintot), max=mean(cost$maxtot))))
 npv.df <- data.frame(LGA=lga, NPV=npv)
 merged <- merge(pu.df, npv.df, by='LGA')
 merged$admin <- 1
 pu.df <- merged
 
 #Add the adjusted conservation value
-pu.df$koala_adj <- pu.df$koala.w*pu.df$sd_cc
+#pu.df$koala_adj <- pu.df$koala.w*pu.df$sd_cc
 
 save(pu.df, file="./preprocessing/pu.df.RData")
 load("./preprocessing/pu.df.RData")
 
 #Make the final df for the optimisation
 
-df <- pu.df[c("LGA", "NPV", "admin", "rank", "prob.property", "bid.price", "koala.w", "koala_adj")]
+df <- pu.df[c("LGA", "NewPropID", "NPV", "admin", "rank", "prob.property", "bid.price", "koala.w", "koala.cc.w")]
 save(df, file="./preprocessing/df.RData")
-
-
-
-
-
 
 
 

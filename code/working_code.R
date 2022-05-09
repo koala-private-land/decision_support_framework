@@ -2,6 +2,7 @@ library(gurobi)
 library(dplyr)
 library (rgdal)
 library(mapmisc)
+library(purrr)
 
 # #test dataset
 # #Each planning unit is an LGA
@@ -48,7 +49,6 @@ colnames(df) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.pr
 ##For testing
 df$npv <- df$npv*20
 
-#Functions
 ####Function to select properties in order up until the NPV constraint
 properties <- function(df){
 df_new <- data.frame()
@@ -60,11 +60,10 @@ for (i in unique(df$puid)){
   #Select only the first 30 for site assessment
   #We can do this in many different ways, but lets order them by highest to lowest probability that someone will put in a bid
   if (dim(df1)[1] > 30) {
-    df1$int.ass <- df1$cons.benefit*df1$prob.property
-    df1 <- df1[order(-df1$int.ass),]
-    df1 <- df1[1:30,]
-    #df1 <- df1[-9]
-    df1 <- select(df1, -int.ass)
+    ##Could do this multiple times to generate uncertainty values
+    df1 <- df[which(df$puid == paste0(i)),]
+    sel <- rbernoulli(df1$NewPropID, p = 30/length(df1$NewPropID))
+    df1 <- df1[which(sel==TRUE),]
   } else {
     df1 <- df1
   }
@@ -80,8 +79,8 @@ for (i in unique(df$puid)){
     #Create a subset which is only those properties lower than the investment amount for the LGA
     df1 <- df1[which(df1$csum < df1[1,]$npv - df1[1,]$admin.cost),]
     #remove cumulative sum column 
-    #df1 <- df1[-9]
-    df1 <- select(df1, -csum)
+    df1 <- df1[-10]
+    #df1 <- select(df1, -csum)
   } else{
     df1 <- df1
   }
@@ -92,8 +91,8 @@ for (i in unique(df$puid)){
     df1$bcr <- df1$property/df1$bid.price
     df1 <- df1[order(-df1$bcr),]
     df1 <- df1[1:15,] 
-    #df1 <- df1[-9]
-    df1 <- select(df1, -bcr)
+    df1 <- df1[-10]
+    #df1 <- select(df1, -bcr)
   } else {
     df1 <- df1
   }
@@ -115,15 +114,6 @@ head(df_new.ag)
 #F <- 10000000
 F <- c(101500000, 20300000, 15200000)
 F <- 15200000
-
-#Weight matrix
-nweights=10
-evaluation_weight=0.5
-weightm <- matrix(0, nrow=nweights, ncol=length(F))
-weightm[1,] <- 1
-weightm[3,] <- evaluation_weight
-
-c(weightm[w,t], 1 - weightm[w,t])
 
 ##to go through all of the scenarios
 #Load in base shp file
@@ -401,3 +391,84 @@ png(file=paste0("./outfoldermaps/scatter_feasibility_vs_cons_cc_", i, ".png"), w
 plot(df_new$prob.property, df_new$cons.benefit.adj, xlab = "Social Feasibility", ylab = "Conservation benefit - cc risk adjusted", cex.lab=1.5)
 dev.off()
 }
+
+
+
+
+##Trade-offs between cons benefit and cost
+#Weight matrix
+nweights=11
+weightm <- matrix(0, nrow=nweights, ncol=length(F))
+weightm[,1] <- c(0.99, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.01)
+#Create benefit matrix
+scen3_ben <- matrix(0, nrow=nweights, ncol=3)
+
+#Run through the weights to create trade-off curves
+for (w in weightm){
+w <- w
+#Scenario 3
+#Set up the optimisation
+#Select the planning units (LGA's)
+model <- list()
+model$A <- matrix(c(df_new.ag$npv), nrow=1)
+model$obj        <- (w*df_new.ag$prob.property*df_new.ag$bid.price)+((1-w)*df_new.ag$cons.benefit)
+#model$obj        <- (weightm[w]*(df_new.ag$prob.property*df_new.ag$bid.price))*((1-weightm[w])*df_new.ag$cons.benefit)
+model$modelsense <- 'max'
+model$rhs        <- c(i)
+model$sense      <- c('<')
+model$vtype      <- 'B'
+
+params <- list(OutputFlag=0)
+
+#Run
+result <- gurobi(model, params)
+
+print('Solution:')
+print(result$objval)
+print(result$x)
+
+###Need to be careful about indexing here
+solution <- data.frame(df_new.ag$puid, result$x)
+selected_pus_scen3 <- solution$df_new.ag.puid[solution$result.x==1]
+selected_pus_scen3
+
+#w <- 1
+#make this the weight number
+scen3_ben[which(weightm == w),1] <- w
+##Pull out total benefits 
+df_new.ag.sel <- df_new.ag[df_new.ag$puid %in% c(selected_pus_scen3),]
+cons.ben <- sum(df_new.ag.sel$cons.benefit)
+tot.cost <- sum(df_new.ag.sel$bid.price)
+##Add it to the matrix
+scen3_ben[which(weightm == w),2] <- cons.ben
+scen3_ben[which(weightm == w),3] <- tot.cost
+
+###Create code to export maps
+setwd("D:/Linkage/DSF code/private_land_conservation_DSF/")
+# create folder:
+if (!dir.exists("outfoldermaps")){
+  dir.create("outfoldermaps", recursive = TRUE)
+} else {
+  print("Dir already exists!")
+}
+
+png(file=paste0("./outfoldermaps/trade_offs/scen_3_budget_", i, "_weight_", w, ".png"), width=1000, height=1000)
+par(mar=c(0,0,0,0))
+#plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
+plot(shp.pu)
+shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus_scen3),]
+plot(shp.pu.sub, col = "lightslateblue", add = TRUE)
+#suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
+dev.off()
+}
+
+save(scen3_ben, file = paste0("./outfoldermaps/trade_offs/", i, ".RData"))
+
+
+
+
+
+
+
+
+
