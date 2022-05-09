@@ -60,7 +60,7 @@ for (i in unique(df$puid)){
   #Select only the first 30 for site assessment
   #Bernoulli selection
   if (dim(df1)[1] > 30) {
-    ##Could do this multiple times to generate uncertainty values
+    ##Could do this multiple times to generate measures of uncertainty
     df1 <- df[which(df$puid == paste0(i)),]
     sel <- rbernoulli(df1$NewPropID, p = 30/length(df1$NewPropID))
     df1 <- df1[which(sel==TRUE),]
