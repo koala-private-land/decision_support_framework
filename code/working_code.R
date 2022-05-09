@@ -58,7 +58,7 @@ for (i in unique(df$puid)){
   df1 <- df[which(df$puid == paste0(i)),]
   
   #Select only the first 30 for site assessment
-  #We can do this in many different ways, but lets order them by highest to lowest probability that someone will put in a bid
+  #Bernoulli selection
   if (dim(df1)[1] > 30) {
     ##Could do this multiple times to generate uncertainty values
     df1 <- df[which(df$puid == paste0(i)),]
