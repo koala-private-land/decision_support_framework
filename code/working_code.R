@@ -3,6 +3,8 @@ library(dplyr)
 library (rgdal)
 library(mapmisc)
 library(purrr)
+library(plyr)
+library(stringr)
 
 # #test dataset
 # #Each planning unit is an LGA
@@ -52,18 +54,36 @@ df$npv <- df$npv*20
 ####Function to select properties in order up until the NPV constraint
 properties <- function(df){
 df_new <- data.frame()
-#i <- unique(df$puid)[6]
+i <- unique(df$puid)[6]
 for (i in unique(df$puid)){
   #for (i in df$puid){
   df1 <- df[which(df$puid == paste0(i)),]
-  
   #Select only the first 30 for site assessment
   #Bernoulli selection
   if (dim(df1)[1] > 30) {
-    ##Could do this multiple times to generate measures of uncertainty
-    df1 <- df[which(df$puid == paste0(i)),]
-    sel <- rbernoulli(df1$NewPropID, p = 30/length(df1$NewPropID))
-    df1 <- df1[which(sel==TRUE),]
+    ##Get a random sample
+    # df1 <- df[which(df$puid == paste0(i)),]
+    # sel <- rbernoulli(df1$NewPropID, p = 30/length(df1$NewPropID))
+    # df1 <- df1[which(sel==TRUE),]
+    
+    ##To do simulations, and select the properties that were selected the most
+    mylist <- list() #create an empty list
+    simulations <- 1:1000 #Choose number of simulations
+    results <- vector("list", length(simulations))
+    for (y in simulations) {
+      rep <- rbernoulli(df1$NewPropID, p = 30/length(df1$NewPropID))
+      results[[y]] <- rep #put all vectors in the list
+    }
+    df.test <- do.call("cbind", results) #combine 
+    df.test <- as.data.frame(df.test)
+    freq <- t(apply(df.test, 1, function(u) table(factor(u, levels=c("TRUE","FALSE")))))
+    freq <- as.data.frame(freq)
+    df1$freq <- freq[,1]
+    df1 <- df1[order(-df1$freq),]
+    df1$freq <- 1:length(df1$freq)
+    df1 <- df1 %>% top_n(30)
+    #remove freq column 
+    df1 <- df1[-10]
   } else {
     df1 <- df1
   }
