@@ -54,7 +54,7 @@ df$npv <- df$npv*20
 ####Function to select properties in order up until the NPV constraint
 properties <- function(df){
 df_new <- data.frame()
-i <- unique(df$puid)[6]
+#i <- unique(df$puid)[6]
 for (i in unique(df$puid)){
   #for (i in df$puid){
   df1 <- df[which(df$puid == paste0(i)),]
@@ -67,7 +67,6 @@ for (i in unique(df$puid)){
     # df1 <- df1[which(sel==TRUE),]
     
     ##To do simulations, and select the properties that were selected the most
-    mylist <- list() #create an empty list
     simulations <- 1:1000 #Choose number of simulations
     results <- vector("list", length(simulations))
     for (y in simulations) {
