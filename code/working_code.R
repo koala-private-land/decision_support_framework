@@ -6,31 +6,16 @@ library(purrr)
 library(plyr)
 library(stringr)
 
-# #test dataset
-# #Each planning unit is an LGA
-# puid <- rep(c(1:20),each= 10)
-# npu <- length(puid)
-# #Ci is the Net present value of amount invested in a tender in planning unit i
-# npv <- rep(c(runif(c(1:20), min=500, max=8000)),each= 10)
-# #Ai is the administrative costs of running a tender in planning unit i.
-# admin.cost <- rep(runif(c(1:20), min=5, max=30), each = 10)
-# #property id - assumed to be in order of BCT ranking process
-# property <- c(1:npu)
-# #Iijk Bernoulli distributed probability that property j in planning unit i will put in a bid
-# prob.property <- runif(npu, min=0, max=1)
-# #pij net present value of the bid price of property j in planning unit i
-# bid.price <- runif(npu, min=0, max=2000)
-# #bij conservation benefit of each property
-# cons.benefit <- runif(npu, min=0, max=3000)
-# #Area in ha
-# area <- runif(npu, min=0, max=150)
-# #Tie it together to create dataframe
-# df <- data.frame(puid, npv, admin.cost, property, prob.property, bid.price, cons.benefit)
-# head(df)
-
+#Set working directory
 setwd("D:/Linkage/DSF code/private_land_conservation_DSF")
-#Remove duplicates -> need to look into why there are duplicates
+
+#Load the required functions
+source('./code/functions.R')
+
+#Load the data
 load("./preprocessing/df.RData")
+
+#Remove duplicates -> need to look into why there are duplicates
 duplicates <- df[duplicated(df), ]
 df <- df[!duplicated(df), ]
 
@@ -48,86 +33,16 @@ df <- df[!duplicated(df), ]
 colnames(df) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "cons.benefit.adj")
 #df <- data.frame(puid = pu.df$LGA, npv = pu.df$NPV, admin.cost = pu.df$admin, property = pu.df$rank, prob.property = pu.df$MeanAdopt, bid.price = pu.df$bid.price, cons.benefit = pu.df$koala.w)
 
-##For testing
-df$npv <- df$npv*20
-
-####Function to select properties in order up until the NPV constraint
-properties <- function(df){
-df_new <- data.frame()
-#i <- unique(df$puid)[6]
-for (i in unique(df$puid)){
-  #for (i in df$puid){
-  df1 <- df[which(df$puid == paste0(i)),]
-  #Select only the first 30 for site assessment
-  #Bernoulli selection
-  if (dim(df1)[1] > 30) {
-    ##Get a random sample
-    # df1 <- df[which(df$puid == paste0(i)),]
-    # sel <- rbernoulli(df1$NewPropID, p = 30/length(df1$NewPropID))
-    # df1 <- df1[which(sel==TRUE),]
-    
-    ##To do simulations, and select the properties that were selected the most
-    simulations <- 1:1000 #Choose number of simulations
-    results <- vector("list", length(simulations))
-    for (y in simulations) {
-      rep <- rbernoulli(df1$NewPropID, p = 30/length(df1$NewPropID))
-      results[[y]] <- rep #put all vectors in the list
-    }
-    df.test <- do.call("cbind", results) #combine 
-    df.test <- as.data.frame(df.test)
-    freq <- t(apply(df.test, 1, function(u) table(factor(u, levels=c("TRUE","FALSE")))))
-    freq <- as.data.frame(freq)
-    df1$freq <- freq[,1]
-    df1 <- df1[order(-df1$freq),]
-    df1$freq <- 1:length(df1$freq)
-    df1 <- df1 %>% top_n(30)
-    #remove freq column 
-    df1 <- df1[-10]
-  } else {
-    df1 <- df1
-  }
-  
-  #Need to add a further constraint to ensure that the selected properties do not exceed the allocated funding for each LGA (NPV)
-  if (sum(df1$bid.price) > df1[1,]$npv - df1[1,]$admin.cost) {
-    #Place in the order reflecting the BCT prioritisation process
-    df1 <- df1[order(df1$property),]
-    #Create a new column that is the cumulative sum of bid price
-    df1 <- df1 %>% group_by(puid) %>% mutate(csum = cumsum(df1$bid.price))
-    #Turn into a dataframe
-    df1 <- as.data.frame(df1)
-    #Create a subset which is only those properties lower than the investment amount for the LGA
-    df1 <- df1[which(df1$csum < df1[1,]$npv - df1[1,]$admin.cost),]
-    #remove cumulative sum column 
-    df1 <- df1[-10]
-    #df1 <- select(df1, -csum)
-  } else{
-    df1 <- df1
-  }
-  
-  #Next select 10-15 sites that are likely to put in a bit after site assessment
-  #We base this on ranking metric (benefits)/bid price - this is the benefit cost ratio
-  if (dim(df1)[1] > 15) {
-    df1$bcr <- df1$property/df1$bid.price
-    df1 <- df1[order(-df1$bcr),]
-    df1 <- df1[1:15,] 
-    df1 <- df1[-10]
-    #df1 <- select(df1, -bcr)
-  } else {
-    df1 <- df1
-  }
-  df_new <- rbind(df_new, df1)
-}
-return(df_new)
-#print("complete")
-}
+##For testing - Set a high overall budget
+df$npv <- df$npv*500
 
 df_new <- properties(df)  
 head(df_new)
 View(df_new)
 
 #Get the overall mean for each planning unit/LGA
-df_new.ag <- aggregate(x = df_new[c("npv","admin.cost", "prob.property","bid.price","cons.benefit", "cons.benefit.adj")], by = df_new[c("puid")], FUN = mean)
-head(df_new.ag)
+# df_new.ag <- aggregate(x = df_new[c("npv","admin.cost", "prob.property","bid.price","cons.benefit", "cons.benefit.adj")], by = df_new[c("puid")], FUN = mean)
+# head(df_new.ag)
 
 #F represents the overall funding
 #F <- 10000000
