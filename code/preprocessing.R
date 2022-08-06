@@ -11,8 +11,9 @@ library(gurobi)
 library(exactextractr)
 library(remotes)
 library(climateStability)
+library(dplyr)
 
-setwd("D:/Linkage/DSF code/private_land_conservation_DSF/")
+setwd("E:/Linkage/DSF code/private_land_conservation_DSF/")
 
 #Ranking
 #The formula for ranking is 
@@ -231,7 +232,7 @@ load("./preprocessing/dist_pa_prop.RData")
 load("./preprocessing/pnts_risk_v3.RData")
 load("./preprocessing/prop_mean_cc.RData")
 
-setwd("D:/Linkage/DSF code/private_land_conservation_DSF/")
+setwd("E:/Linkage/DSF code/private_land_conservation_DSF/")
 #Some of this can be tied together and some of it has to be merged
 pu.df <- data.frame(NewPropID=propid, area=area, risk = pnts_risk_v3)
 colnames(pu.df) <- c("NewPropID", "area", "risk")
@@ -291,16 +292,20 @@ colnames(LGA_prop_intersect.dbf)[27] <- "CADID"
 #properties.dbf_ag <- aggregate(properties.dbf_cost, by = list(properties.dbf$propid), FUN = "sum")
 
 #Join property data with probability predictions
-probs <- read.csv("D:/Linkage/DSF code/private_land_conservation_DSF/raw_data/Probability/spatial_predictions_inf.csv")
+probs <- read.csv("E:/Linkage/DSF code/private_land_conservation_DSF/raw_data/Probability/spatial_predictions_inf.csv")
 properties_prob <- merge(LGA_prop_intersect.dbf, probs, by='CADID')
 ####Need to turn bid price into total. WTA == $1000/ha/yr 
-properties_prob$MeanWTA.tot <- properties_prob$Area_H*properties_prob$MeanProp*properties_prob$MeanWTA*1000
+###Be careful of areas - here I have converted m to ha
+properties_prob$MeanWTA.tot <- (properties_prob$Area_m/10000)*properties_prob$MeanProp*properties_prob$MeanWTA*1000
 ##All of this aggregating won't be necessary with Jonathan's new predictions which are at the "propid" level
-MeanWTA.tot <- aggregate(x = properties_prob[c("MeanWTA.tot")], by = properties_prob[c("NewPropID")], FUN = sum)
+MeanWTA.tot <- aggregate(x = properties_prob[c("MeanWTA.tot")], by = properties_prob[c("NewPropID")], FUN = mean)
 MeanWTA.tot <- MeanWTA.tot[MeanWTA.tot$NewPropID > 0,]
 properties_prob.ag <- aggregate(x = properties_prob[c("MeanAdopt", "MeanProp")], by = properties_prob[c("NewPropID")], FUN = mean)
 properties_prob.ag <- properties_prob.ag[properties_prob.ag$NewPropID > 0,]
 merged <- merge(properties_prob.ag, MeanWTA.tot, by='NewPropID')
+#####Change MeanWTA.tot to in perpetuity values
+###Divide MeanWTA.tot by a discount rate of 3.5% (0.035)
+merged$MeanWTA.tot <- merged$MeanWTA.tot/0.035
 
 #Merge with main dataframe
 merged <- merge(pu.df, merged, by='NewPropID')
@@ -315,17 +320,62 @@ list <- which(pu.df$area < pu.df$koala.w)
 list
 
 ##Need to estimate the amount that would realistically be spent on each tender
-cost <- read.csv("./raw_data/bct_agreement_cost.csv")
-#Get total values of conservation tenders
-cost$mintot <- cost$total_area*cost$min_cost_ha
-cost$maxtot <- cost$total_area*cost$max_cost_ha
+# cost <- read.csv("./raw_data/bct_agreement_cost.csv")
+# #Get total values of conservation tenders
+# cost$mintot <- cost$total_area*cost$min_cost_ha
+# cost$maxtot <- cost$total_area*cost$max_cost_ha
+# length(unique(pu.df$LGA))
+# lga <- unique(pu.df$LGA)
+# npv <- rep(c(runif(c(1:98), min=mean(cost$mintot), max=mean(cost$maxtot))))
+# npv.df <- data.frame(LGA=lga, NPV=npv)
 
-length(unique(pu.df$LGA))
-lga <- unique(pu.df$LGA)
-npv <- rep(c(runif(c(1:98), min=mean(cost$mintot), max=mean(cost$maxtot))))
-npv.df <- data.frame(LGA=lga, NPV=npv)
+##Using data from BCT
+cost <- read.csv("./raw_data/bct_cost_data_26_7_22.csv")
+#lga <- unique(pu.df$LGA)
+#Get the LGA areas
+properties.dbf <- read.dbf("./preprocessing/LGA_properties_intersection_CADID_retained.dbf", as.is = FALSE)
+#Pull out just LGA's
+LGA_area <- properties.dbf[c("CADID", "Area_H")]
+LGA_area <- aggregate(LGA_area, by = list(LGA_area$CADID), FUN = "mean")
+#Remove duplicates
+LGA_area <- LGA_area[!duplicated(LGA_area), ]
+LGA_area_mean <- mean(LGA_area$Area_H)
+LGA_area$LGA_area_mean_multiplier <- LGA_area$Area_H/LGA_area_mean
+#npv_mean <- mean(cost$Approx_tot_investment)
+LGA_area$npv.mean <- mean(cost$Approx_tot_investment) 
+LGA_area$npv.adj <- LGA_area$npv.mean*LGA_area$LGA_area_mean_multiplier
+cost <- na.omit(cost)
+BCT_mean <- mean(cost$Estimated_BCT_costs)
+LGA_area$admin.mean <- BCT_mean
+LGA_area$admin.adj <- BCT_mean*LGA_area$LGA_area_mean_multiplier
+colnames(LGA_area) <- c("Group", "LGA", "Area", "Multiplier", "npv.mean", "npv.adj", "admin.mean", "admin.adj")
+npv.df <- LGA_area[c("LGA", "npv.adj", "npv.mean", "admin.adj", "admin.mean")]
+
+#cost <- na.omit(cost)
+# #Total investment
+# plot(cost$Approx_tot_investment, cost$Conservation_area_ha)
+# #abline(lm(Approx_tot_investment ~ Conservation_area_ha, data = cost))
+# model <- lm(cost$Approx_tot_investment ~ cost$Conservation_area_ha)
+# summary(model)
+# #Test linear assumptions
+# plot(model)
+# 
+# # ##Log the data
+# # plot(log(cost$Approx_tot_investment), log(cost$Conservation_area_ha))
+# # model <- lm(log(cost$Approx_tot_investment) ~ log(cost$Conservation_area_ha))
+# # summary(model)
+# 
+# #The perha
+# summary(aov(cost$Total_per_ha~cost$Region,data=cost))
+# summary(aov(cost$Approx_tot_investment~cost$Region,data=cost))
+# ##Per ha cost against region
+# summary(lm(cost$Total_per_ha ~ cost$Region))
+# 
+# cost_mr <- filter(cost, Region == "Murray-Riverina")
+# summary(lm(cost_mr$Approx_tot_investment ~ cost_mr$Conservation_area_ha))
+# plot(cost_mr$Approx_tot_investment ~ cost_mr$Conservation_area_ha)
+
 merged <- merge(pu.df, npv.df, by='LGA')
-merged$admin <- 1
 pu.df <- merged
 
 #Add the adjusted conservation value
@@ -336,7 +386,7 @@ load("./preprocessing/pu.df.RData")
 
 #Make the final df for the optimisation
 
-df <- pu.df[c("LGA", "NewPropID", "NPV", "admin", "rank", "prob.property", "bid.price", "koala.w", "koala.cc.w")]
+df <- pu.df[c("LGA", "NewPropID", "npv.adj", "npv.mean", "admin.adj", "admin.mean", "rank", "prob.property", "bid.price", "koala.w", "koala.cc.w")]
 save(df, file="./preprocessing/df.RData")
 
 

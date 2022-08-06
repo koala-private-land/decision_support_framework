@@ -7,7 +7,7 @@ library(plyr)
 library(stringr)
 
 #Set working directory
-setwd("D:/Linkage/DSF code/private_land_conservation_DSF")
+setwd("E:/Linkage/DSF code/private_land_conservation_DSF")
 
 #Load the required functions
 source('./code/functions.R')
@@ -18,6 +18,10 @@ load("./preprocessing/df.RData")
 #Remove duplicates -> need to look into why there are duplicates
 duplicates <- df[duplicated(df), ]
 df <- df[!duplicated(df), ]
+
+####Set up dataframes for appropriate scenarios
+###using npv.adj
+df <- df[c("LGA", "NewPropID", "npv.adj", "admin.mean", "rank", "prob.property", "bid.price", "koala.w", "koala.cc.w")]
 
 #Rename the columns if need be
 #Columns must be named
@@ -34,7 +38,7 @@ colnames(df) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.pr
 #df <- data.frame(puid = pu.df$LGA, npv = pu.df$NPV, admin.cost = pu.df$admin, property = pu.df$rank, prob.property = pu.df$MeanAdopt, bid.price = pu.df$bid.price, cons.benefit = pu.df$koala.w)
 
 ##For testing - Set a high overall budget
-df$npv <- df$npv*500
+#df$npv <- df$npv*500
 
 df_new <- properties(df)  
 head(df_new)

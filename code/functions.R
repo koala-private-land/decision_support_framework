@@ -44,6 +44,8 @@ properties <- function(df){
   df_final <- data.frame()
   #i <- unique(df$puid)[6]
   #i <- 108012388
+  #i <- 108012496
+  #i <- 108012496
   for (i in unique(df$puid)){
     #To keep track of where it is up to
     print(paste0("Planning_unit_", i))
@@ -55,7 +57,7 @@ properties <- function(df){
     result <- data.frame() 
     
     #For each simulation
-    rep <- 10
+    rep <- 1000
     
     #Start looping through the simulations
     #x <- 1
@@ -101,6 +103,14 @@ properties <- function(df){
         rank.metric$bcr <- rank.metric$property/rank.metric$bid.price
         rank.c.b <- rank.metric[order(-rank.metric$bcr),]
         rank.c.b <- rank.c.b[-10]
+      }
+      
+      
+      ###If y from above "selected" 0 properties, then we need to create a dataframe that only has 0s to avoid errors in the next bit of the code, and for calculating aggregated means
+      if (nrow(rank.c.b)==0){
+        rank.c.b[1,] <- 0
+      } else {
+        rank.c.b <- rank.c.b 
       }
       
       #5a. Generate the % of property covenented
