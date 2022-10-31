@@ -36,16 +36,16 @@ Set wd, output directory, import functions and pre-processed data, define the nu
 #Load the required functions
 source('./code/functions.R')
 #Load the data
-load("./preprocessing/pu.df.RData")
+load("./preprocessing/pu.df_22.10.22.RData")
 #Set number of simulations
-sim <- 10
+sim <- 15
 #Test overall budget level
 b <- 20300000*5
 b.vec <- c(1:10 * 20300000)
 #Create output folders 
-outfolder <- "outputs_v5"
-outfoldermaps <- "outputs_v5/maps_v5"
-outfoldervals <- "outputs_v5/vals_v5"
+outfolder <- "outputs_v7"
+outfoldermaps <- "outputs_v7/maps_v7"
+outfoldervals <- "outputs_v7/vals_v7"
 # create folder:
   if (!dir.exists(outfoldermaps)){
     dir.create(outfoldermaps, recursive = TRUE)
@@ -179,7 +179,7 @@ save(result, file=paste0(outfolder, "./", scen, "_", b, ".RData"))
 ###Export the results
 ```{r, results = FALSE}
 #Load in base shp file for the planning units
-shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
 ###Need to be super careful about indexing here
 #First create a solutions matrix to show which LGA was selected with which budget increment
 solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
@@ -203,7 +203,7 @@ exp.vals(outfoldervals, scen)
 
 ##Scenario 3 cycling through the budgets
 ```{r, include=FALSE}
-for (b in b.vec[6:10]){
+for (b in b.vec[1:10]){
   scen <- "scenario3"
 df <- df.org[c("LGA", "NewPropID", "npv.mean", "admin.mean", "rank", "MeanAdopt", "MeanWTA.tot", "koala_curr.w")]
 colnames(df) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit")
@@ -305,7 +305,7 @@ save(result, file=paste0(outfolder, "./", scen, "_", b, ".RData"))
 
 ###Export the results
 #Load in base shp file for the planning units
-shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
 ###Need to be super careful about indexing here
 #First create a solutions matrix to show which LGA was selected with which budget increment
 solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
@@ -340,10 +340,10 @@ scenario we are also using admin.mean (which is the average admin cost across al
 #List the names of the climate 18 scenarios
 cc.names <- c("cccma_cgcm31", "ccsr_miroc32hi", "ccsr_miroc32med", "cnrm_cm3", "csiro_mk30", "gfdl_cm20", "gfdl_cm21", "giss_modeleh", "giss_modeler", "iap_fgoals10g", "inm_cm30", "ipsl_cm4", "mpi_echam5", "mri_cgcm232a", "ncar_ccsm30", "ncar_pcm1", "ukmo_hadcm3", "ukmo_hadgem1")
 
-b <- b.vec[7]
+b <- b.vec[1]
 
 #Run through all CC scenarios
-for (c in cc.names[18:length(cc.names)]){
+for (c in cc.names[1:length(cc.names)]){
 scen <- paste0(c)
 df <- df.org[c("LGA", "NewPropID", "npv.mean", "admin.mean", paste0("rank.", c), "MeanAdopt", "MeanWTA.tot", paste0(c, ".w"))]
 colnames(df) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit")
@@ -440,7 +440,7 @@ save(result, file=paste0(outfolder, "./", scen, "_", b, ".RData"))
 
 #Export the results
 #Load in base shp file for the planning units
-shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
 ###Need to be super careful about indexing here
 #First create a solutions matrix to show which LGA was selected with which budget increment
 solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
@@ -459,7 +459,7 @@ make.maps(outfoldermaps, scen)
 exp.vals(outfoldervals, scen)
 
 ######Print diagnostic plots
-shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
 ##Get the summed aggregate of koala habitat in each LGA  
   agg.cons <- aggregate(x = df.org %>% pull(paste0(c, ".w")), by = list(df.org$LGA), FUN = sum)
   colnames(agg.cons) <- c("CADID", "cc_scen")
@@ -716,10 +716,9 @@ Next we move onto scenario 2 (the scenario that ignores conservation objectives 
 scenario we are also using admin.mean (which is the average admin cost across all previous tenders). We allocate the same amount for each tender. 
 ```{r}
 scen <- "scenario2"
-df <- df.org[c("LGA", "NewPropID", "npv.mean", "admin.mean", "rank", "MeanAdopt", "MeanWTA.tot", "koala_curr.w")]
+df <- df.org[c("LGA", "NewPropID", "npv.mean", "admin.mean", "rank", "MeanAdopt", "MeanWTA.tot", "area")]
 colnames(df) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit")
 #We need to make all conservation values uniform, so we allocate a value of 1
-df$cons.benefit <- 1
 df$rank <-1
 ```
 Again, use the minimum npv value (for LGAs), this sets up for the next bit of the code which is increments
@@ -829,7 +828,7 @@ save(result, file=paste0(outfolder, "./", scen, "_", b, ".RData"))
 ###Export the results
 ```{r, results = FALSE, include=FALSE}
 #Load in base shp file for the planning units
-shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
 ###Need to be super careful about indexing here
 #First create a solutions matrix to show which LGA was selected with which budget increment
 solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
@@ -854,10 +853,9 @@ exp.vals(outfoldervals, scen)
 
 for (b in b.vec){
 scen <- "scenario2"
-df <- df.org[c("LGA", "NewPropID", "npv.mean", "admin.mean", "rank", "MeanAdopt", "MeanWTA.tot", "koala_curr.w")]
+df <- df.org[c("LGA", "NewPropID", "npv.mean", "admin.mean", "rank", "MeanAdopt", "MeanWTA.tot", "area")]
 colnames(df) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit")
 #We need to make all conservation values uniform, so we allocate a value of 1
-df$cons.benefit <- 1
 df$rank <-1
 #Again, use the minimum npv value (for LGAs), this sets up for the next bit of the code which is increments
 cost <- read.csv("./raw_data/bct_cost_data_26_7_22.csv")
@@ -952,7 +950,7 @@ save(result, file=paste0(outfolder, "./", scen, "_", b, ".RData"))
 
 ###Export the results
 #Load in base shp file for the planning units
-shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
 ###Need to be super careful about indexing here
 #First create a solutions matrix to show which LGA was selected with which budget increment
 solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
@@ -998,7 +996,7 @@ df_new <- df_new[rowSums(df_new[])>0,]
 Create NPV increments, with the min being the lowest NPV reported and the max being the highest. 
 y is the number of increments, 65 increments equates to roughly increments of $1,000,000 
 ```{r}
-y <- 65
+y <- 33
 min_npv <- min(cost$Approx_tot_investment)
 max_npv <- max(cost$Approx_tot_investmen)
 incre <- (max_npv-min_npv)/y
@@ -1092,7 +1090,7 @@ save(result, file=paste0(outfolder, "./", scen, "_", b, ".RData"))
 ###Export the results
 ```{r, results = FALSE}
 #Load in base shp file for the planning units
-shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
 ###Need to be super careful about indexing here
 #First create a solutions matrix to show which LGA was selected with which budget increment
 solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
@@ -1221,7 +1219,7 @@ save(result, file=paste0(outfolder, "./", scen, "_", b, ".RData"))
 
 ###Export the results
 #Load in base shp file for the planning units
-shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
 ###Need to be super careful about indexing here
 #First create a solutions matrix to show which LGA was selected with which budget increment
 solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
@@ -1247,7 +1245,7 @@ exp.vals(outfoldervals, scen)
 
 ##Diagnostic plots
 ```{r, include=FALSE}
-shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
 ##Get the summed aggregate of koala habitat in each LGA  
   agg.cons <- aggregate(x = df.org$koala_curr.w, by = list(df.org$LGA), FUN = sum)
   colnames(agg.cons) <- c("CADID", "koala_curr.w")
@@ -1295,7 +1293,7 @@ shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
   
   
 ###Plot the conservation benefit weighted by proportion that people would covent
-  shp.pu <- readOGR("./raw_data/LGAs_study_region.shp")
+  shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
 ###Get the summed aggregate of koala habitat in each LGA  
   agg.cons <- aggregate(x = df.org$koala_curr.w*df.org$MeanProp, by = list(df.org$LGA), FUN = sum)
   colnames(agg.cons) <- c("CADID", "koala_curr.w.prop")
@@ -1417,4 +1415,7 @@ ggplot(df, aes(x = Budget, y = Consben, group = Scenario)) +
   ylab("Suitability-weighted koala habitat (M km2)") +
   theme(legend.position = "top")
 ```
+
+
+
 

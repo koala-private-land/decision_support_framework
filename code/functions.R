@@ -287,8 +287,7 @@ properties.scen2 <- function(df, rep){
     } else {
       df_final <- rbind(df_final, result)
     }
-    ##In this scenario we are ignorning conservation benefit, so it needs to have a uniform value of 1
-    df_final$cons.benefit <-1
+
     df_final <-df_final[which(df_final[,1]>0),]
   }
   
