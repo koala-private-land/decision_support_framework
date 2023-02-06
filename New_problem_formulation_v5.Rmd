@@ -404,7 +404,7 @@ print('Solution:')
 print(result$objval)
 print(result$x)
 #save(result, file=paste0(outfolder, "./", scen, "_", b, ".RData"))
-save(result, file = paste0(outfolder, scen, "_", b, ".RData"))
+save(result, file = paste0(outfolder, "./", scen, "_", b, ".RData"))
 
 ###Export the results
 #Load in base shp file for the planning units

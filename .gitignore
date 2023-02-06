@@ -39,6 +39,8 @@ vignettes/*.pdf
 .Renviron
 .Rproj.user
 
+/pngs
+/archive
 /raw_data
 /preprocessing
 /outfoldermaps
@@ -49,7 +51,7 @@ vignettes/*.pdf
 /outputs_v4
 /outputs_v5
 /outputs_v6
-/outputs_v7
+/outputs_v11
 /supp_tables
 /testing_npf_outfoldermaps.v1
 /code/archive
