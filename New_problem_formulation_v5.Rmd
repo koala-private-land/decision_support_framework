@@ -1,0 +1,2174 @@
+---
+title: "DSF"
+output:
+  pdf_document: default
+  html_document: default
+date: "2022-10-13"
+---
+
+#Spatially optimising market-based instruments on private lands for conservation
+## Code to run all scenarios
+### For queries please email brooke.williams@uq.edu.au or j.rhodes@uq.edu.au
+##Set up 
+```{r "knitr config", cache = FALSE, include=FALSE}
+require("knitr")
+opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+##Always gets set to where Rmd file is
+```
+Load packages and set working directory
+```{r setup}
+library(gurobi)
+library(Matrix)
+library(rgeos)
+library(sp)
+library(gurobi)
+library(dplyr)
+library(magrittr)
+library (rgdal)
+library(mapmisc)
+library(purrr)
+library(plyr)
+library(stringr)
+library(parallel)
+library(data.table)
+library(doSNOW)
+library(foreach)
+library(doParallel)
+library(ranger)
+library(palmerpenguins)
+library(tidyverse)
+library(kableExtra)
+library(stringi)
+rm(list=ls())
+getwd()
+```
+```{r check-wd, echo=FALSE}
+getwd()
+```
+Set wd, output directory, import functions and pre-processed data, define the number of simulations and the overall budget
+```{r, include=FALSE}
+setwd("E:/Linkage/DSF code/private_land_conservation_DSF/")
+#Load the required functions
+source('./code/functions.R')
+#Load the data
+#load("./preprocessing/pu.df_10.01.23.RData")
+load("./preprocessing/pu.df_22.10.22.RData")
+#save(pu.df, file= "./preprocessing/pu.df.koala.symp.RData")
+load("./preprocessing/pu.df.koala.symp.RData")
+
+#Set number of simulations
+sim <- 50
+#Test overall budget level
+b <- 20300000*5
+b.vec <- c(1:10 * 20300000)
+#Create output folders 
+outfolder <- "outputs_v11"
+outfoldermaps <- "outputs_v11/maps_v11"
+outfoldervals <- "outputs_v11/vals_v11"
+# create folder:
+  if (!dir.exists(outfoldermaps)){
+    dir.create(outfoldermaps, recursive = TRUE)
+  } else {
+    print("Dir already exists!")
+  }
+if (!dir.exists(outfoldervals)){
+  dir.create(outfoldervals, recursive = TRUE)
+} else {
+  print("Dir already exists!")
+}
+#Remove duplicates -> need to look into if and why there are duplicates
+duplicates <- pu.df[duplicated(pu.df), ]
+df.org <- pu.df[!duplicated(pu.df), ]
+```
+
+##Scenario 2
+Set up dataframe for appropriate scenario
+Here we start with scenario 2 (the scenario that includes both conservation objectives and bidding behaviour, or the "bussiness as usual" scenario). In this scenario we are also using admin.mean (which is the average admin cost across all previous tenders). We allocate the same amount for each tender. 
+```{r}
+scen <- "scenario2"
+df <- df.org[c("LGA", "NewPropID", "npv.mean", "admin.mean", "rank", "MeanAdopt", "MeanWTA.tot", "koala_curr.w", "area", "koala_area")]
+colnames(df) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area", "koala_area")
+#For parallel processing
+#Split larger dataframe into list of smaller dataframes (ie. one for each planning unit)
+split.df <- split(df, df$puid)
+#Need to specify path to parallel processed outputs
+pt <- "E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/par/"
+```
+In this case we first want to use the minimum npv value (for LGAs), this sets up for the next bit of the code which is increments
+```{r, include=FALSE}
+cost <- read.csv("./raw_data/bct_cost_data_26_7_22.csv")
+min(cost$Approx_tot_investment)
+df$npv <- 1126260
+```
+Run through the first of simulations - this is for the first npv increment
+```{r, results = FALSE, include=FALSE}
+df_new0 <- properties.par(split.df, sim)
+ll <- list.files(path=pt, pattern = '.RData', full.names=TRUE)
+ll <- ll[1:length(ll)-1]
+file.remove(ll)
+load(paste0(pt, "df_final93.RData"))
+df_new0 <- df_final
+df_new0 <- df_new0[rowSums(df_new0[])>0,]
+```
+Create NPV increments, with the min being the lowest NPV reported and the max being the highest. 
+y is the number of increments, 65 increments equates to roughly increments of $1,000,000 
+```{r}
+y <- 33
+min_npv <- min(cost$Approx_tot_investment)
+max_npv <- max(cost$Approx_tot_investmen)
+incre <- (max_npv-min_npv)/y
+#Add new NPV values to the dataframe
+df$npv.min <- min_npv
+for(i in 1:y) {                                   # Head of for-loop
+  new <- rep(min_npv, nrow(df))                   # Create data for new column
+  df[ , ncol(df) + 1] <- new + incre*i            # Append new column
+  colnames(df)[ncol(df)] <- paste0("npv", i)      # Rename column name
+}
+```
+
+Now we need to run separate simulations for each LGA budget increment - this creates y new dataframes
+```{r, results = FALSE, include=FALSE}
+##Create a new dataframe which has all puid's, so that new dataframes can be merged to this
+#This ensures that even if an LGA has no successful bids (ie. the bidders are higher than the NPV), we capture that in the optimisiaton
+#So we are merging everything to the complete set of LGA ids
+df.to.merge <- data.frame(puid = unique(df$puid))
+df_new0 <- merge(df.to.merge, df_new0, by = "puid", all = TRUE)
+
+#Create a new dataframe for each increment (y above)
+for (i in 1:y){
+  df1 <- df[c("puid", "NewPropID", paste0("npv", i), "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area", "koala_area")]
+  colnames(df1) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area", "koala_area")
+  #check this
+  split.df1 <- split(df1, df$puid)
+  properties.par(split.df1, sim)
+  ll <- list.files(path=pt, pattern = '.RData', full.names=TRUE)
+  ll <- ll[1:length(ll)-1]
+  file.remove(ll)
+  load(paste0(pt, "df_final93.RData"))
+  df_new <- df_final
+  assign(paste0("df_new", i), df_new)
+  merged <- merge(df.to.merge, get(paste0("df_new", i)), by = "puid", all = TRUE)
+  assign(paste0("df_new", i), merged)
+  assign(paste0("df_new", i), get(paste0("df_new", i))[rowSums(get(paste0("df_new", i))[])>0,])
+}
+```
+###Set up structures for the optimisation
+Create matrix for constraint that says only 1 budget can be allocated per LGA
+```{r}
+#Create matrix where nrow and ncol = no. planning units
+#df_new <- df_new[rowSums(df_new[])>0,]
+matrix_data=matrix(0,nrow=length(unique(pu.df$puid)),ncol=length(unique(pu.df$puid)))
+# assign value to 1
+diag(matrix_data)=1
+#We need as many replicates as there are cost incremements
+pu_matrix <- do.call(cbind, replicate(y+1,matrix_data, simplify=FALSE))
+#Join the NPV data to this matrix, for each cost increment
+#First make a long string of all costs
+#Start with the original
+npv.all.incre <- df_new0$npv
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  npv.all.incre <- c(npv.all.incre, get(df.name)$npv)
+  #Make the cost of the NA values so high that they would never be selected
+  npv.all.incre[is.na(npv.all.incre)] = 1000000000000000
+}
+
+#Join it to the planning unit matrix
+m <- rbind(pu_matrix, npv.all.incre)
+#Make sparse
+constr_matrix <- drop0(m, tol = 0)
+
+#Make a long string of all conservation benefit
+cons.all.incre <- df_new0$cons.benefit
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  cons.all.incre <- c(cons.all.incre, get(df.name)$cons.benefit)
+  cons.all.incre[is.na(cons.all.incre)] = 0
+}
+
+#Make a long string of koala area
+karea.all.incre <- df_new0$area
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  karea.all.incre <- c(karea.all.incre, get(df.name)$area)
+  karea.all.incre[is.na(karea.all.incre)] = 0
+}
+
+#Make a long string of all area benefit
+area.all.incre <- df_new0$area
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  area.all.incre <- c(area.all.incre, get(df.name)$area)
+  area.all.incre[is.na(area.all.incre)] = 0
+}
+
+
+
+```
+Set up and run the optimisation (to select priority planning units (LGA's))
+```{r, results = FALSE}
+model <- list()
+#model$A <- matrix(c(data_frame_test$npv), nrow=1)
+#nrow needs to be the number of planning units/LGA's + 1 (the 1 is the data vector)
+model$A <- constr_matrix
+model$obj        <- cons.all.incre
+model$modelsense <- 'max'
+model$rhs        <- c(rep(1, nrow(constr_matrix)-1), b)
+model$sense      <- c(rep('<=',nrow(constr_matrix)-1),'<')
+model$vtype      <- c('B')
+
+params <- list(OutputFlag=0)
+
+#Run
+result <- gurobi(model, params)
+
+print('Solution:')
+print(result$objval)
+print(result$x)
+save(result, file=paste0(outfolder, "./", scen, "_", b, ".RData"))
+
+```
+###Export the results
+```{r, results = FALSE}
+#Load in base shp file for the planning units
+#shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
+shp.pu <- readOGR("E:/Linkage/DSF code/private_land_conservation_DSF/raw_data/LGAs_study_region_clip.shp")
+
+###Need to be super careful about indexing here
+#First create a solutions matrix to show which LGA was selected with which budget increment
+solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+#FOR HEAT MAPS
+#Then put values to this solutions matrix so we can visualise the selected budget amounts
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol <- rowSums(solutions.budget.matrix)
+
+#Do the same for conservation benefit
+consben.matrix <- matrix(cons.all.incre/1000000, nrow=length(unique(pu.df$LGA)))
+solutions.consben.matrix <- solutions*consben.matrix
+consben.sol <- rowSums(solutions.consben.matrix)
+
+#And make one from consben/area
+area.matrix <- matrix(((cons.all.incre/1000000)/(area.all.incre/1000000)), nrow=length(unique(pu.df$LGA)))
+solutions.consben.area.matrix <- solutions*area.matrix
+solutions.consben.area.matrix[is.nan(solutions.consben.area.matrix)] <- 0
+consben.area.sol <- rowSums(solutions.consben.area.matrix)
+
+#Generate the results
+make.maps(outfoldermaps, scen)
+exp.vals(outfoldervals, scen)
+```
+
+
+##Scenario 2 cycling through the budgets
+```{r, include=FALSE}
+for (b in b.vec[1:10]){
+scen <- "scenario2"
+df <- df.org[c("LGA", "NewPropID", "npv.mean", "admin.mean", "rank", "MeanAdopt", "MeanWTA.tot", "koala_curr.w", "area", "koala_area")]
+colnames(df) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area", "koala_area")
+
+#In this case we first want to use the minimum npv value (for LGAs), this sets up for the next bit of #the code which is increments
+cost <- read.csv("./raw_data/bct_cost_data_26_7_22.csv")
+min(cost$Approx_tot_investment)
+df$npv <- 1126260
+
+#For parallel processing
+#Split larger dataframe into list of smaller dataframes (ie. one for each planning unit)
+split.df <- split(df, df$puid)
+#Need to specify path to parallel processed outputs
+pt <- "E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/par/"
+
+#Run through the first of simulations - this is for the first npv increment
+df_new0 <- properties.par(split.df, sim)  
+ll <- list.files(path=pt, pattern = '.RData', full.names=TRUE)
+ll <- ll[1:length(ll)-1]
+file.remove(ll)
+load(paste0(pt, "df_final93.RData"))
+df_new0 <- df_final
+df_new0 <- df_new0[rowSums(df_new0[])>0,]
+
+#Create NPV increments, with the min being the lowest NPV reported and the max being the highest. 
+#y is the number of increments, 65 increments equates to roughly increments of $1,000,000 
+
+y <- 33
+min_npv <- min(cost$Approx_tot_investment)
+max_npv <- max(cost$Approx_tot_investmen)
+incre <- (max_npv-min_npv)/y
+#Add new NPV values to the dataframe
+df$npv.min <- min_npv
+for(i in 1:y) {                                   # Head of for-loop
+  new <- rep(min_npv, nrow(df))                   # Create data for new column
+  df[ , ncol(df) + 1] <- new + incre*i            # Append new column
+  colnames(df)[ncol(df)] <- paste0("npv", i)      # Rename column name
+}
+
+#Now we need to run separate simulations for each LGA budget increment - this creates y new dataframes
+##Create a new dataframe which has all puid's, so that new dataframes can be merged to this
+#This ensures that even if an LGA has no successful bids (ie. the bidders are higher than the NPV), we capture that in the optimisiaton
+#So we are merging everything to the complete set of LGA ids
+df.to.merge <- data.frame(puid = unique(df$puid))
+df_new0 <- merge(df.to.merge, df_new0, by = "puid", all = TRUE)
+
+#Create a new dataframe for each increment (y above)
+for (i in 1:y){
+  # df1 <- df[c("puid", "NewPropID", paste0("npv", i), "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area")]
+  # colnames(df1) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area")
+  # df_new <- properties(df1, sim)  
+  # assign(paste0("df_new", i), df_new)
+  # merged <- merge(df.to.merge, get(paste0("df_new", i)), by = "puid", all = TRUE)
+  # assign(paste0("df_new", i), merged)
+  # assign(paste0("df_new", i), get(paste0("df_new", i))[rowSums(get(paste0("df_new", i))[])>0,])
+  df1 <- df[c("puid", "NewPropID", paste0("npv", i), "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area", "koala_area")]
+  colnames(df1) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area", "koala_area")
+  #check this
+  split.df1 <- split(df1, df$puid)
+  properties.par(split.df1, sim)
+  ll <- list.files(path=pt, pattern = '.RData', full.names=TRUE)
+  ll <- ll[1:length(ll)-1]
+  file.remove(ll)
+  load(paste0(pt, "df_final93.RData"))
+  df_new <- df_final
+  assign(paste0("df_new", i), df_new)
+  merged <- merge(df.to.merge, get(paste0("df_new", i)), by = "puid", all = TRUE)
+  assign(paste0("df_new", i), merged)
+  assign(paste0("df_new", i), get(paste0("df_new", i))[rowSums(get(paste0("df_new", i))[])>0,])
+  
+}
+###Set up structures for the optimisation
+#Create matrix for constraint that says only 1 budget can be allocated per LGA
+#Create matrix where nrow and ncol = no. planning units
+df_new <- df_new[rowSums(df_new[])>0,]
+matrix_data=matrix(0,nrow=nrow(df_new),ncol=nrow(df_new))
+# assign value to 1
+diag(matrix_data)=1
+#We need as many replicates as there are cost incremements
+pu_matrix <- do.call(cbind, replicate(y+1,matrix_data, simplify=FALSE))
+#Join the NPV data to this matrix, for each cost increment
+#First make a long string of all costs
+#Start with the original
+npv.all.incre <- df_new0$npv
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  npv.all.incre <- c(npv.all.incre, get(df.name)$npv)
+  #Make the cost of the NA values so high that they would never be selected
+  npv.all.incre[is.na(npv.all.incre)] = 1000000000000000
+}
+
+#Join it to the planning unit matrix
+m <- rbind(pu_matrix, npv.all.incre)
+#Make sparse
+constr_matrix <- drop0(m, tol = 0)
+
+#Make a long string of koala area
+karea.all.incre <- df_new0$area
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  karea.all.incre <- c(karea.all.incre, get(df.name)$area)
+  karea.all.incre[is.na(karea.all.incre)] = 0
+}
+
+#Make a long string of all conservation benefit
+cons.all.incre <- df_new0$cons.benefit
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  cons.all.incre <- c(cons.all.incre, get(df.name)$cons.benefit)
+  cons.all.incre[is.na(cons.all.incre)] = 0
+}
+
+#Make a long string of all area benefit
+area.all.incre <- df_new0$area
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  area.all.incre <- c(area.all.incre, get(df.name)$area)
+  area.all.incre[is.na(area.all.incre)] = 0
+}
+
+#Set up and run the optimisation (to select priority planning units (LGA's))
+model <- list()
+#model$A <- matrix(c(data_frame_test$npv), nrow=1)
+#nrow needs to be the number of planning units/LGA's + 1 (the 1 is the data vector)
+model$A <- constr_matrix
+model$obj        <- cons.all.incre
+model$modelsense <- 'max'
+model$rhs        <- c(rep(1, nrow(constr_matrix)-1), b)
+model$sense      <- c(rep('<=',nrow(constr_matrix)-1),'<')
+model$vtype      <- c('B')
+
+params <- list(OutputFlag=0)
+
+#Run
+result <- gurobi(model, params)
+
+print('Solution:')
+print(result$objval)
+print(result$x)
+#save(result, file=paste0(outfolder, "./", scen, "_", b, ".RData"))
+save(result, file = paste0(outfolder, scen, "_", b, ".RData"))
+
+###Export the results
+#Load in base shp file for the planning units
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
+###Need to be super careful about indexing here
+#First create a solutions matrix to show which LGA was selected with which budget increment
+solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+#FOR HEAT MAPS
+#Then put values to this solutions matrix so we can visualise the selected budget amounts
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol <- rowSums(solutions.budget.matrix)
+#Do the same for conservation benefit
+consben.matrix <- matrix(cons.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.consben.matrix <- solutions*consben.matrix
+consben.sol <- rowSums(solutions.consben.matrix)
+
+#And make one from consben/area
+area.matrix <- matrix(((cons.all.incre/1000000)/(area.all.incre/1000000)), nrow=length(unique(pu.df$LGA)))
+solutions.consben.area.matrix <- solutions*area.matrix
+solutions.consben.area.matrix[is.nan(solutions.consben.area.matrix)] <- 0
+consben.area.sol <- rowSums(solutions.consben.area.matrix)
+
+#Generate the results
+make.maps(outfoldermaps, scen)
+exp.vals(outfoldervals, scen)
+}
+```
+
+
+
+
+
+
+
+
+
+
+##Scenario 3 (climate informed) for all of the climate change scenarios, RCP8.5 for the latest year(1985)
+Set up dataframe for appropriate scenario
+Here we start with scenario 3 (the scenario that includes both conservation objectives and bidding behaviour, or the "complete" scenario). In this 
+scenario we are also using admin.mean (which is the average admin cost across all previous tenders). We allocate the same amount for each tender. 
+```{r, include=FALSE}
+#List the names of the climate 18 scenarios
+cc.names <- c("cccma_cgcm31", "ccsr_miroc32hi", "ccsr_miroc32med", "cnrm_cm3", "csiro_mk30", "gfdl_cm20", "gfdl_cm21", "giss_modeleh", "giss_modeler", "iap_fgoals10g", "inm_cm30", "ipsl_cm4", "mpi_echam5", "mri_cgcm232a", "ncar_ccsm30", "ncar_pcm1", "ukmo_hadcm3", "ukmo_hadgem1")
+
+#b <- b.vec[1]
+
+#c <- cc.names[1]
+#Run through all CC scenarios
+for (cc in cc.names[1:length(cc.names)]){
+scen <- paste0(cc)
+df <- df.org[c("LGA", "NewPropID", "npv.mean", "admin.mean", paste0("rank.", cc), "MeanAdopt", "MeanWTA.tot", paste0(cc, ".w"), "area", "koala_area")]
+colnames(df) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area", "koala_area")
+
+#In this case we first want to use the minimum npv value (for LGAs), this sets up for the next bit of the code which is increments
+cost <- read.csv("./raw_data/bct_cost_data_26_7_22.csv")
+min(cost$Approx_tot_investment)
+df$npv <- 1126260
+
+#For parallel processing
+#Split larger dataframe into list of smaller dataframes (ie. one for each planning unit)
+split.df <- split(df, df$puid)
+#Need to specify path to parallel processed outputs
+pt <- "E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/par/"
+
+#Run through the first of simulations - this is for the first npv increment
+df_new0 <- properties.par(split.df, sim)  
+ll <- list.files(path=pt, pattern = '.RData', full.names=TRUE)
+ll <- ll[1:length(ll)-1]
+file.remove(ll)
+load(paste0(pt, "df_final93.RData"))
+df_new0 <- df_final
+df_new0 <- df_new0[rowSums(df_new0[])>0,]
+
+#Create NPV increments, with the min being the lowest NPV reported and the max being the highest. 
+#y is the number of increments, 65 increments equates to roughly increments of $1,000,000 
+y <- 33
+min_npv <- min(cost$Approx_tot_investment)
+max_npv <- max(cost$Approx_tot_investmen)
+incre <- (max_npv-min_npv)/y
+#Add new NPV values to the dataframe
+df$npv.min <- min_npv
+for(i in 1:y) {                                   # Head of for-loop
+  new <- rep(min_npv, nrow(df))                   # Create data for new column
+  df[ , ncol(df) + 1] <- new + incre*i            # Append new column
+  colnames(df)[ncol(df)] <- paste0("npv", i)      # Rename column name
+}
+#Now we need to run separate simulations for each LGA budget increment - this creates y new dataframes
+##Create a new dataframe which has all puid's, so that new dataframes can be merged to this
+#This ensures that even if an LGA has no successful bids (ie. the bidders are higher than the NPV), we capture that in the optimisiaton
+#So we are merging everything to the complete set of LGA ids
+df.to.merge <- data.frame(puid = unique(df$puid))
+df_new0 <- merge(df.to.merge, df_new0, by = "puid", all = TRUE)
+
+#Create a new dataframe for each increment (y above)
+for (i in 1:y){
+  # df1 <- df[c("puid", "NewPropID", paste0("npv", i), "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area", "koala_area")]
+  # colnames(df1) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area", "koala_area")
+  # df_new <- properties.par(df1, sim)  
+  # assign(paste0("df_new", i), df_new)
+  # merged <- merge(df.to.merge, get(paste0("df_new", i)), by = "puid", all = TRUE)
+  # assign(paste0("df_new", i), merged)
+  # assign(paste0("df_new", i), get(paste0("df_new", i))[rowSums(get(paste0("df_new", i))[])>0,])
+  # 
+  # 
+  
+  df1 <- df[c("puid", "NewPropID", paste0("npv", i), "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area", "koala_area")]
+  colnames(df1) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area", "koala_area")
+  #check this
+  split.df1 <- split(df1, df$puid)
+  properties.par(split.df1, sim)
+  ll <- list.files(path=pt, pattern = '.RData', full.names=TRUE)
+  ll <- ll[1:length(ll)-1]
+  file.remove(ll)
+  load(paste0(pt, "df_final93.RData"))
+  df_new <- df_final
+  assign(paste0("df_new", i), df_new)
+  merged <- merge(df.to.merge, get(paste0("df_new", i)), by = "puid", all = TRUE)
+  assign(paste0("df_new", i), merged)
+  assign(paste0("df_new", i), get(paste0("df_new", i))[rowSums(get(paste0("df_new", i))[])>0,])
+}
+#Set up structures for the optimisation
+#Create matrix for constraint that says only 1 budget can be allocated per LGA
+#Create matrix where nrow and ncol = no. planning units
+df_new <- df_new[rowSums(df_new[])>0,]
+matrix_data=matrix(0,nrow=nrow(df_new),ncol=nrow(df_new))
+# assign value to 1
+diag(matrix_data)=1
+#We need as many replicates as there are cost incremements
+pu_matrix <- do.call(cbind, replicate(y+1,matrix_data, simplify=FALSE))
+#Join the NPV data to this matrix, for each cost increment
+#First make a long string of all costs
+#Start with the original
+npv.all.incre <- df_new0$npv
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  npv.all.incre <- c(npv.all.incre, get(df.name)$npv)
+  #Make the cost of the NA values so high that they would never be selected
+  npv.all.incre[is.na(npv.all.incre)] = 1000000000000000
+}
+
+#Join it to the planning unit matrix
+m <- rbind(pu_matrix, npv.all.incre)
+#Make sparse
+constr_matrix <- drop0(m, tol = 0)
+
+#Make a long string of koala area
+karea.all.incre <- df_new0$area
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  karea.all.incre <- c(karea.all.incre, get(df.name)$area)
+  karea.all.incre[is.na(karea.all.incre)] = 0
+}
+
+#Make a long string of all conservation benefit
+cons.all.incre <- df_new0$cons.benefit
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  cons.all.incre <- c(cons.all.incre, get(df.name)$cons.benefit)
+  cons.all.incre[is.na(cons.all.incre)] = 0
+}
+
+#Make a long string of all area benefit
+area.all.incre <- df_new0$area
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  area.all.incre <- c(area.all.incre, get(df.name)$area)
+  area.all.incre[is.na(area.all.incre)] = 0
+}
+
+#Set up and run the optimisation (to select priority planning units (LGA's))
+model <- list()
+#model$A <- matrix(c(data_frame_test$npv), nrow=1)
+#nrow needs to be the number of planning units/LGA's + 1 (the 1 is the data vector)
+model$A <- constr_matrix
+model$obj        <- cons.all.incre
+model$modelsense <- 'max'
+model$rhs        <- c(rep(1, nrow(constr_matrix)-1), b)
+model$sense      <- c(rep('<=',nrow(constr_matrix)-1),'<')
+model$vtype      <- c('B')
+
+params <- list(OutputFlag=0)
+
+#Run
+result <- gurobi(model, params)
+
+print('Solution:')
+print(result$objval)
+print(result$x)
+save(result, file=paste0(outfolder, "./", scen, "_", b, ".RData"))
+
+#Export the results
+#Load in base shp file for the planning units
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
+###Need to be super careful about indexing here
+#First create a solutions matrix to show which LGA was selected with which budget increment
+solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+#FOR HEAT MAPS
+#Then put values to this solutions matrix so we can visualise the selected budget amounts
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol <- rowSums(solutions.budget.matrix)
+#Do the same for conservation benefit
+consben.matrix <- matrix(cons.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.consben.matrix <- solutions*consben.matrix
+consben.sol <- rowSums(solutions.consben.matrix)
+
+#And make one from consben/area
+area.matrix <- matrix(((cons.all.incre/1000000)/(area.all.incre/1000000)), nrow=length(unique(pu.df$LGA)))
+solutions.consben.area.matrix <- solutions*area.matrix
+solutions.consben.area.matrix[is.nan(solutions.consben.area.matrix)] <- 0
+consben.area.sol <- rowSums(solutions.consben.area.matrix)
+
+#Generate the results
+make.maps(outfoldermaps, scen)
+exp.vals(outfoldervals, scen)
+
+######Print diagnostic plots
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
+##Get the summed aggregate of koala habitat in each LGA  
+  agg.cons <- aggregate(x = df.org %>% pull(paste0(cc, ".w")), by = list(df.org$LGA), FUN = sum)
+  colnames(agg.cons) <- c("CADID", "cc_scen")
+  shp.pu.joined <- merge(shp.pu, agg.cons, by = "CADID")
+  shp.pu.joined[is.na(shp.pu.joined$cc_scen)] <- 0
+  
+  #Export the map
+  png(file=paste0(outfoldermaps, "./Conservation_benefit_", cc, "_w_.png"), width=1000, height=1000)
+  par(mar=c(0,0,0,0))
+  #plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
+  #plot the polygons without colour
+  plot(shp.pu.joined)
+  # Set the palette
+  p <- colorRampPalette(c("white", "#009933", "#003300"))(128)
+  palette(p)       
+  # Scale the values to the palette
+  vals <- shp.pu.joined$cc_scen
+  cols <- (vals - min(vals))/diff(range(vals))*127+1
+  plot(shp.pu.joined, col=cols)
+
+  #Add a legend
+  levels <- unique(shp.pu.joined$cc_scen)
+  levels <- round(levels, digits=1)
+  levels <- sort(levels)
+  col.levels <- unique(cols)
+  col.levels <- sort(col.levels)
+  
+  
+  # add a legend to your map
+  legend("topright",   # location of legend
+         legend = levels, # categories or elements to render in
+         # the legend
+         fill = col.levels, # color palette to use to fill objects in legend.
+         title = "Suitability weighted koala habitat km2",
+         bty = "n",
+         cex = 0.7)
+  cex <- 1
+  scaleBar(shp.pu, pos = "bottomleft",   
+           cex=1,
+           pt.cex = 1.1*cex,
+           seg.len=10*cex,
+           title.cex=cex,
+           outer=FALSE)
+  #suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
+  dev.off()
+}
+
+
+###Create map that is the average budget allocated to each LGA across all cc scenarios
+load(paste0("./outputs_v5/cccma_cgcm31_101500000.RData"))
+cccma_cgcm31 <- result$x 
+load(paste0("./outputs_v5/ccsr_miroc32hi_101500000.RData"))
+ccsr_miroc32hi <- result$x 
+load(paste0("./outputs_v5/ccsr_miroc32med_101500000.RData"))
+ccsr_miroc32med <- result$x 
+load(paste0("./outputs_v5/cnrm_cm3_101500000.RData"))
+cnrm_cm3 <- result$x 
+load(paste0("./outputs_v5/csiro_mk30_101500000.RData"))
+csiro_mk30 <- result$x 
+load(paste0("./outputs_v5/gfdl_cm20_101500000.RData"))
+gfdl_cm20 <- result$x 
+load(paste0("./outputs_v5/gfdl_cm21_101500000.RData"))
+gfdl_cm21 <- result$x 
+load(paste0("./outputs_v5/giss_modeleh_101500000.RData"))
+giss_modeleh <- result$x 
+load(paste0("./outputs_v5/giss_modeler_101500000.RData"))
+giss_modeler <- result$x 
+load(paste0("./outputs_v5/iap_fgoals10g_101500000.RData"))
+iap_fgoals10g <- result$x 
+load(paste0("./outputs_v5/inm_cm30_101500000.RData"))
+inm_cm30 <- result$x
+load(paste0("./outputs_v5/ipsl_cm4_101500000.RData"))
+ipsl_cm4 <- result$x
+load(paste0("./outputs_v5/mpi_echam5_101500000.RData"))
+mpi_echam5 <- result$x
+load(paste0("./outputs_v5/mri_cgcm232a_101500000.RData"))
+mri_cgcm232a <- result$x
+load(paste0("./outputs_v5/ncar_ccsm30_101500000.RData"))
+ncar_ccsm30 <- result$x
+load(paste0("./outputs_v5/ncar_pcm1_101500000.RData"))
+ncar_pcm1 <- result$x
+
+# create folder:
+if (!dir.exists(outfoldermaps)){
+  dir.create(outfoldermaps, recursive = TRUE)
+} else {
+  print("Dir already exists!")
+}
+if (!dir.exists(outfoldervals)){
+  dir.create(outfoldervals, recursive = TRUE)
+} else {
+  print("Dir already exists!")
+}
+
+# npv.all.incre <- c(df_new1$npv, df_new2$npv, df_new3$npv, df_new4$npv, df_new5$npv, df_new6$npv, df_new7$npv, df_new8$npv, df_new9$npv, df_new10$npv, df_new11$npv, df_new12$npv, df_new13$npv, df_new14$npv, df_new15$npv, df_new16$npv, df_new17$npv, df_new18$npv, df_new19$npv, df_new20$npv, df_new21$npv, df_new22$npv, df_new23$np, df_new24$npv, df_new25$npv, df_new26$npv, df_new27$npv, df_new28$npv, df_new29$npv, df_new30$npv, df_new31$npv, df_new32$npv, df_new33$npv)
+
+solutions <- matrix(cccma_cgcm31, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol.cccma_cgcm31 <- rowSums(solutions.budget.matrix)
+
+solutions <- matrix(ccsr_miroc32hi, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol.ccsr_miroc32hi <- rowSums(solutions.budget.matrix)
+
+solutions <- matrix(ccsr_miroc32med, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol.ccsr_miroc32med <- rowSums(solutions.budget.matrix)
+
+solutions <- matrix(cnrm_cm3, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol.cnrm_cm3 <- rowSums(solutions.budget.matrix)
+
+solutions <- matrix(csiro_mk30, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol.csiro_mk30 <- rowSums(solutions.budget.matrix)
+
+solutions <- matrix(gfdl_cm20, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol.gfdl_cm20 <- rowSums(solutions.budget.matrix)
+
+solutions <- matrix(gfdl_cm21, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol.gfdl_cm21 <- rowSums(solutions.budget.matrix)
+
+solutions <- matrix(giss_modeleh, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol.giss_modeleh <- rowSums(solutions.budget.matrix)
+
+solutions <- matrix(giss_modeler, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol.giss_modeler <- rowSums(solutions.budget.matrix)
+
+solutions <- matrix(iap_fgoals10g, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol.iap_fgoals10g <- rowSums(solutions.budget.matrix)
+
+solutions <- matrix(inm_cm30, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol.inm_cm30 <- rowSums(solutions.budget.matrix)
+
+solutions <- matrix(ipsl_cm4, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol.ipsl_cm4 <- rowSums(solutions.budget.matrix)
+
+solutions <- matrix(mpi_echam5, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol.mpi_echam5 <- rowSums(solutions.budget.matrix)
+
+solutions <- matrix(mri_cgcm232a, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol.mri_cgcm232a <- rowSums(solutions.budget.matrix)
+
+solutions <- matrix(ncar_ccsm30, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol.ncar_ccsm30 <- rowSums(solutions.budget.matrix)
+
+solutions <- matrix(ncar_pcm1, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol.ncar_pcm1 <- rowSums(solutions.budget.matrix)
+
+
+all.mean <- (budget.sol.cccma_cgcm31+budget.sol.ccsr_miroc32hi+budget.sol.ccsr_miroc32med+budget.sol.cnrm_cm3+budget.sol.csiro_mk30+budget.sol.gfdl_cm20+budget.sol.gfdl_cm21+budget.sol.giss_modeleh+budget.sol.giss_modeler+budget.sol.iap_fgoals10g+budget.sol.inm_cm30+budget.sol.ipsl_cm4+budget.sol.mpi_echam5+budget.sol.mri_cgcm232a+budget.sol.ncar_ccsm30+budget.sol.ncar_pcm1)/18
+
+a <- unique(pu.df$LGA)
+#HEATMAP
+###For heat map showing selected budget
+##Join budget values to shp file
+pu.and.budget <- data.frame(a, all.mean)
+colnames(pu.and.budget) <- c("CADID", "mean.all")
+shp.pu.joined <- merge(shp.pu, pu.and.budget, by = "CADID", duplicateGeoms = TRUE)
+shp.pu.joined[is.na(shp.pu.joined$budget.sol)] <- 0
+#Export the map
+#Generate results
+setwd("E:/Linkage/DSF code/private_land_conservation_DSF/")
+
+png(file=paste0(outfoldermaps, "/cc_mean_budget.png"), width=1000, height=1000)
+par(mar=c(0,0,0,0))
+#plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
+#plot the polygons without colour
+plot(shp.pu.joined)
+# Set the palette
+p <- colorRampPalette(c("white", "#FBD724", "#F2751B", "#C63E4B", "#8B226A", "#4A126B", "#82206B", "#1D0B45", "#000004"))(128)
+palette(p)
+# Scale the values to the palette
+vals <- shp.pu.joined$mean.all
+vals[is.na(vals)] <- 0
+cols <- (vals - min(vals))/diff(range(vals))*127+1
+plot(shp.pu.joined, col=cols)
+
+#Add a legend
+levels <- unique(shp.pu.joined$mean.all)
+levels <- round(levels, digits=1)
+levels <- sort(levels)
+col.levels <- unique(cols)
+col.levels <- sort(col.levels)
+
+# add a legend to your map
+legend("topright",   # location of legend
+       legend = levels, # categories or elements to render in
+       # the legend
+       fill = col.levels, # color palette to use to fill objects in legend.
+       title = "Mean budget allocated $ AUD",
+       bty = "n",
+       cex = 1.2)
+cex <- 1
+scaleBar(shp.pu.joined, pos = "bottomleft",   
+         cex=1,
+         pt.cex = 1.1*cex,
+         seg.len=10*cex,
+         title.cex=cex,
+         outer=FALSE)
+#suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
+dev.off()
+
+```
+
+
+###NPV all incre
+```{r, include=FALSE}
+
+```
+
+
+##Scenario 2
+Set up dataframe for appropriate scenario
+Next we move onto scenario 2 (the scenario that ignores conservation objectives and is driven entirely by bidding behaviour). In this 
+scenario we are also using admin.mean (which is the average admin cost across all previous tenders). We allocate the same amount for each tender. 
+```{r}
+scen <- "scenario2"
+df <- df.org[c("LGA", "NewPropID", "npv.mean", "admin.mean", "rank", "MeanAdopt", "MeanWTA.tot", "area", "koala_curr.w")]
+colnames(df) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "koala_curr.w")
+#We need to make all conservation values uniform, so we allocate a value of 1
+df$rank <-1
+```
+Again, use the minimum npv value (for LGAs), this sets up for the next bit of the code which is increments
+```{r, include=FALSE}
+cost <- read.csv("./raw_data/bct_cost_data_26_7_22.csv")
+min(cost$Approx_tot_investment)
+df$npv <- 1126260
+```
+Run through the first of simulations - this is for the first npv increment
+```{r, results = FALSE, include=FALSE}
+df_new0 <- properties.scen2(df, sim)  
+df_new0 <- df_new0[rowSums(df_new0[])>0,]
+```
+Create NPV increments, with the min being the lowest NPV reported and the max being the highest. 
+y is the number of increments, 65 increments equates to roughly increments of $1,000,000 
+```{r}
+y <- 33
+min_npv <- min(cost$Approx_tot_investment)
+max_npv <- max(cost$Approx_tot_investmen)
+incre <- (max_npv-min_npv)/y
+#Add new NPV values to the dataframe
+df$npv.min <- min_npv
+for(i in 1:y) {                                   # Head of for-loop
+  new <- rep(min_npv, nrow(df))                   # Create data for new column
+  df[ , ncol(df) + 1] <- new + incre*i            # Append new column
+  colnames(df)[ncol(df)] <- paste0("npv", i)      # Rename column name
+}
+```
+Now we need to run separate simulations for each LGA budget increment - this creates y new dataframes
+```{r, results = FALSE, include=FALSE}
+##Create a new dataframe which has all puid's, so that new dataframes can be merged to this
+#This ensures that even if an LGA has no successful bids (ie. the bidders are higher than the NPV), we capture that in the optimisiaton
+#So we are merging everything to the complete set of LGA ids
+df.to.merge <- data.frame(puid = unique(df$puid))
+df_new0 <- merge(df.to.merge, df_new0, by = "puid", all = TRUE)
+df_new0 <- df_new0[df_new0$puid !=0,]
+#Create a new dataframe for each increment (y above)
+for (i in 1:y){
+  df1 <- df[c("puid", "NewPropID", paste0("npv", i), "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "koala_curr.w")]
+  colnames(df1) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "koala_curr.w")
+  df_new <- properties.scen2(df1, sim)  
+  assign(paste0("df_new", i), df_new)
+  merged <- merge(df.to.merge, get(paste0("df_new", i)), by = "puid", all = TRUE)
+  assign(paste0("df_new", i), merged)
+  assign(paste0("df_new", i), get(paste0("df_new", i))[rowSums(get(paste0("df_new", i))[])>0,])
+  assign(paste0("df_new", i), get(paste0("df_new", i))[get(paste0("df_new", i))$puid !=0,])
+}
+```
+###Set up structures for the optimisation
+Create matrix for constraint that says only 1 budget can be allocated per LGA
+```{r}
+#Create matrix where nrow and ncol = no. planning units
+df_new <- df_new[rowSums(df_new[])>1,]
+matrix_data=matrix(0,nrow=nrow(df_new),ncol=nrow(df_new))
+# assign value to 1
+diag(matrix_data)=1
+#We need as many replicates as there are cost incremements
+pu_matrix <- do.call(cbind, replicate(y+1,matrix_data, simplify=FALSE))
+#Join the NPV data to this matrix, for each cost increment
+#First make a long string of all costs
+#Start with the original
+npv.all.incre <- df_new0$npv
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  npv.all.incre <- c(npv.all.incre, get(df.name)$npv)
+  #Make the cost of the NA values so high that they would never be selected
+  npv.all.incre[is.na(npv.all.incre)] = 1000000000000000
+}
+
+#Join it to the planning unit matrix
+m <- rbind(pu_matrix, npv.all.incre)
+#Make sparse
+constr_matrix <- drop0(m, tol = 0)
+
+#Make a long string of all conservation benefit
+cons.all.incre <- df_new0$cons.benefit
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  cons.all.incre <- c(cons.all.incre, get(df.name)$cons.benefit)
+  cons.all.incre[is.na(cons.all.incre)] = 0
+}
+
+#And in this case make a long string of all koala benefit
+koala.all.incre <- df_new0$koala_curr.w
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  koala.all.incre <- c(koala.all.incre, get(df.name)$koala_curr.w)
+  koala.all.incre[is.na(koala.all.incre)] = 0
+}
+
+```
+Set up and run the optimisation (to select priority planning units (LGA's))
+```{r, results = FALSE, include=FALSE}
+model <- list()
+#model$A <- matrix(c(data_frame_test$npv), nrow=1)
+#nrow needs to be the number of planning units/LGA's + 1 (the 1 is the data vector)
+model$A <- constr_matrix
+model$obj        <- cons.all.incre
+model$modelsense <- 'max'
+model$rhs        <- c(rep(1, nrow(constr_matrix)-1), b)
+model$sense      <- c(rep('<=',nrow(constr_matrix)-1),'<')
+model$vtype      <- c('B')
+
+params <- list(OutputFlag=0)
+
+#Run
+result <- gurobi(model, params)
+
+print('Solution:')
+print(result$objval)
+print(result$x)
+save(result, file=paste0(outfolder, "./", scen, "_", b, ".RData"))
+
+```
+###Export the results
+```{r, results = FALSE, include=FALSE}
+#Load in base shp file for the planning units
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
+###Need to be super careful about indexing here
+#First create a solutions matrix to show which LGA was selected with which budget increment
+solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+#FOR HEAT MAPS
+#Then put values to this solutions matrix so we can visualise the selected budget amounts
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol <- rowSums(solutions.budget.matrix)
+#Do the same for conservation benefit
+consben.matrix <- matrix(koala.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.consben.matrix <- solutions*consben.matrix
+consben.sol <- rowSums(solutions.consben.matrix)
+
+#And make one from consben/area
+area.matrix <- matrix(((cons.all.incre/1000000)/(area.all.incre/1000000)), nrow=length(unique(pu.df$LGA)))
+solutions.consben.area.matrix <- solutions*area.matrix
+solutions.consben.area.matrix[is.nan(solutions.consben.area.matrix)] <- 0
+consben.area.sol <- rowSums(solutions.consben.area.matrix)
+
+#Generate the results
+make.maps(outfoldermaps, scen)
+exp.vals2(outfoldervals, scen)
+```
+
+
+##Scenario 2 cycling through the different budgets
+```{r, include=FALSE}
+
+for (b in b.vec){
+scen <- "scenario2"
+df <- df.org[c("LGA", "NewPropID", "npv.mean", "admin.mean", "rank", "MeanAdopt", "MeanWTA.tot", "area", "koala_curr.w")]
+colnames(df) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "koala_curr.w")
+#We need to make all conservation values uniform, so we allocate a value of 1
+df$rank <-1
+#Again, use the minimum npv value (for LGAs), this sets up for the next bit of the code which is increments
+cost <- read.csv("./raw_data/bct_cost_data_26_7_22.csv")
+min(cost$Approx_tot_investment)
+df$npv <- 1126260
+#Run through the first of simulations - this is for the first npv increment
+df_new0 <- properties.scen2(df, sim)  
+df_new0 <- df_new0[rowSums(df_new0[])>0,]
+#Create NPV increments, with the min being the lowest NPV reported and the max being the highest. 
+#y is the number of increments, 65 increments equates to roughly increments of $1,000,000 
+y <- 33
+min_npv <- min(cost$Approx_tot_investment)
+max_npv <- max(cost$Approx_tot_investmen)
+incre <- (max_npv-min_npv)/y
+#Add new NPV values to the dataframe
+df$npv.min <- min_npv
+for(i in 1:y) {                                   # Head of for-loop
+  new <- rep(min_npv, nrow(df))                   # Create data for new column
+  df[ , ncol(df) + 1] <- new + incre*i            # Append new column
+  colnames(df)[ncol(df)] <- paste0("npv", i)      # Rename column name
+}
+#Now we need to run separate simulations for each LGA budget increment - this creates y new dataframes
+##Create a new dataframe which has all puid's, so that new dataframes can be merged to this
+#This ensures that even if an LGA has no successful bids (ie. the bidders are higher than the NPV), we capture that in the optimisiaton
+#So we are merging everything to the complete set of LGA ids
+df.to.merge <- data.frame(puid = unique(df$puid))
+df_new0 <- merge(df.to.merge, df_new0, by = "puid", all = TRUE)
+df_new0 <- df_new[df_new0$puid !=0,]
+#Create a new dataframe for each increment (y above)
+for (i in 1:y){
+  df1 <- df[c("puid", "NewPropID", paste0("npv", i), "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "koala_curr.w")]
+  colnames(df1) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "koala_curr.w")
+  df_new <- properties.scen2(df1, sim)  
+  assign(paste0("df_new", i), df_new)
+  merged <- merge(df.to.merge, get(paste0("df_new", i)), by = "puid", all = TRUE)
+  assign(paste0("df_new", i), merged)
+  assign(paste0("df_new", i), get(paste0("df_new", i))[rowSums(get(paste0("df_new", i))[])>0,])
+  assign(paste0("df_new", i), get(paste0("df_new", i))[get(paste0("df_new", i))$puid !=0,])
+}
+###Set up structures for the optimisation
+#Create matrix for constraint that says only 1 budget can be allocated per LGA
+#Create matrix where nrow and ncol = no. planning units
+df_new <- df_new[rowSums(df_new[])>1,]
+matrix_data=matrix(0,nrow=nrow(df_new),ncol=nrow(df_new))
+# assign value to 1
+diag(matrix_data)=1
+#We need as many replicates as there are cost incremements
+pu_matrix <- do.call(cbind, replicate(y+1,matrix_data, simplify=FALSE))
+#Join the NPV data to this matrix, for each cost increment
+#First make a long string of all costs
+#Start with the original
+npv.all.incre <- df_new0$npv
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  npv.all.incre <- c(npv.all.incre, get(df.name)$npv)
+  #Make the cost of the NA values so high that they would never be selected
+  npv.all.incre[is.na(npv.all.incre)] = 1000000000000000
+}
+
+#Join it to the planning unit matrix
+m <- rbind(pu_matrix, npv.all.incre)
+#Make sparse
+constr_matrix <- drop0(m, tol = 0)
+
+#Make a long string of all conservation benefit
+cons.all.incre <- df_new0$cons.benefit
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  cons.all.incre <- c(cons.all.incre, get(df.name)$cons.benefit)
+  cons.all.incre[is.na(cons.all.incre)] = 0
+}
+
+#And in this case make a long string of all koala benefit
+koala.all.incre <- df_new0$koala_curr.w
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  koala.all.incre <- c(koala.all.incre, get(df.name)$koala_curr.w)
+  koala.all.incre[is.na(koala.all.incre)] = 0
+}
+
+
+#Set up and run the optimisation (to select priority planning units (LGA's))
+model <- list()
+#model$A <- matrix(c(data_frame_test$npv), nrow=1)
+#nrow needs to be the number of planning units/LGA's + 1 (the 1 is the data vector)
+model$A <- constr_matrix
+model$obj        <- cons.all.incre
+model$modelsense <- 'max'
+model$rhs        <- c(rep(1, nrow(constr_matrix)-1), b)
+model$sense      <- c(rep('<=',nrow(constr_matrix)-1),'<')
+model$vtype      <- c('B')
+
+params <- list(OutputFlag=0)
+
+#Run
+result <- gurobi(model, params)
+
+print('Solution:')
+print(result$objval)
+print(result$x)
+save(result, file=paste0(outfolder, "./", scen, "_", b, ".RData"))
+
+###Export the results
+#Load in base shp file for the planning units
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
+###Need to be super careful about indexing here
+#First create a solutions matrix to show which LGA was selected with which budget increment
+solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+#FOR HEAT MAPS
+#Then put values to this solutions matrix so we can visualise the selected budget amounts
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol <- rowSums(solutions.budget.matrix)
+#Do the same for conservation benefit
+consben.matrix <- matrix(koala.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.consben.matrix <- solutions*consben.matrix
+consben.sol <- rowSums(solutions.consben.matrix)
+#Generate the results
+make.maps(outfoldermaps, scen)
+exp.vals2(outfoldervals, scen)
+}
+```
+
+
+##Scenario 1
+Set up dataframe for appropriate scenario
+Next we move onto scenario 1 (the scenario that ignores bidding behaviour and optimises based only on conservation values and land value). In this 
+scenario we are also using admin.mean (which is the average admin cost across all previous tenders). We allocate the same amount for each tender. 
+```{r}
+scen <- "scenario1"
+df <- df.org[c("LGA", "NewPropID", "npv.mean", "admin.mean", "rank", "MeanAdopt", "LValHa", "koala_curr", "area")]
+colnames(df) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area")
+#We need to make all conservation values uniform, so we allocate a value of 1
+df$prob.property <- 1
+```
+Again, use the minimum npv value (for LGAs), this sets up for the next bit of the code which is increments
+```{r}
+cost <- read.csv("./raw_data/bct_cost_data_26_7_22.csv")
+min(cost$Approx_tot_investment)
+df$npv <- 1126260
+```
+Run through the first of simulations - this is for the first npv increment
+```{r, results = FALSE, include=FALSE}
+df_new0 <- properties(df, sim)  
+df_new0 <- df_new0[rowSums(df_new0[])>0,]
+```
+Create NPV increments, with the min being the lowest NPV reported and the max being the highest. 
+y is the number of increments, 65 increments equates to roughly increments of $1,000,000 
+```{r}
+y <- 33
+min_npv <- min(cost$Approx_tot_investment)
+max_npv <- max(cost$Approx_tot_investmen)
+incre <- (max_npv-min_npv)/y
+#Add new NPV values to the dataframe
+df$npv.min <- min_npv
+for(i in 1:y) {                                   # Head of for-loop
+  new <- rep(min_npv, nrow(df))                   # Create data for new column
+  df[ , ncol(df) + 1] <- new + incre*i            # Append new column
+  colnames(df)[ncol(df)] <- paste0("npv", i)      # Rename column name
+}
+```
+Now we need to run separate simulations for each LGA budget increment - this creates y new dataframes
+```{r, results = FALSE, include=FALSE}
+##Create a new dataframe which has all puid's, so that new dataframes can be merged to this
+#This ensures that even if an LGA has no successful bids (ie. the bidders are higher than the NPV), we capture that in the optimisiaton
+#So we are merging everything to the complete set of LGA ids
+df.to.merge <- data.frame(puid = unique(df$puid))
+df_new0 <- merge(df.to.merge, df_new0, by = "puid", all = TRUE)
+
+#Create a new dataframe for each increment (y above)
+for (i in 1:y){
+  df1 <- df[c("puid", "NewPropID", paste0("npv", i), "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area")]
+  colnames(df1) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area")
+  df_new <- properties(df1, sim)  
+  assign(paste0("df_new", i), df_new)
+  merged <- merge(df.to.merge, get(paste0("df_new", i)), by = "puid", all = TRUE)
+  assign(paste0("df_new", i), merged)
+  assign(paste0("df_new", i), get(paste0("df_new", i))[rowSums(get(paste0("df_new", i))[])>0,])
+  assign(paste0("df_new", i), get(paste0("df_new", i))[get(paste0("df_new", i))$puid !=0,])
+}
+```
+Now set up and run the optimisation
+###Set up structures for the optimisation
+Create matrix for constraint that says only 1 budget can be allocated per LGA
+```{r}
+#Create matrix where nrow and ncol = no. planning units
+df_new <- df_new[rowSums(df_new[])>1,]
+matrix_data=matrix(0,nrow=nrow(df_new),ncol=nrow(df_new))
+# assign value to 1
+diag(matrix_data)=1
+#We need as many replicates as there are cost incremements
+pu_matrix <- do.call(cbind, replicate(y+1,matrix_data, simplify=FALSE))
+#Join the NPV data to this matrix, for each cost increment
+#First make a long string of all costs
+#Start with the original
+npv.all.incre <- df_new0$npv
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  npv.all.incre <- c(npv.all.incre, get(df.name)$npv)
+  #Make the cost of the NA values so high that they would never be selected
+  npv.all.incre[is.na(npv.all.incre)] = 1000000000000000
+}
+
+#Join it to the planning unit matrix
+m <- rbind(pu_matrix, npv.all.incre)
+#Make sparse
+constr_matrix <- drop0(m, tol = 0)
+
+#Make a long string of all conservation benefit
+cons.all.incre <- df_new0$cons.benefit
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  cons.all.incre <- c(cons.all.incre, get(df.name)$cons.benefit)
+  cons.all.incre[is.na(cons.all.incre)] = 0
+}
+
+```
+Set up and run the optimisation (to select priority planning units (LGA's))
+```{r, results = FALSE, include=FALSE}
+model <- list()
+#model$A <- matrix(c(data_frame_test$npv), nrow=1)
+#nrow needs to be the number of planning units/LGA's + 1 (the 1 is the data vector)
+model$A <- constr_matrix
+model$obj        <- cons.all.incre
+model$modelsense <- 'max'
+model$rhs        <- c(rep(1, nrow(constr_matrix)-1), b)
+model$sense      <- c(rep('<=',nrow(constr_matrix)-1),'<')
+model$vtype      <- c('B')
+
+params <- list(OutputFlag=0)
+
+#Run
+result <- gurobi(model, params)
+
+print('Solution:')
+print(result$objval)
+print(result$x)
+save(result, file=paste0(outfolder, "./", scen, "_", b, ".RData"))
+
+```
+###Export the results
+```{r, results = FALSE}
+#Load in base shp file for the planning units
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
+###Need to be super careful about indexing here
+#First create a solutions matrix to show which LGA was selected with which budget increment
+solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+#FOR HEAT MAPS
+#Then put values to this solutions matrix so we can visualise the selected budget amounts
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol <- rowSums(solutions.budget.matrix)
+#Do the same for conservation benefit
+consben.matrix <- matrix(cons.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.consben.matrix <- solutions*consben.matrix
+consben.sol <- rowSums(solutions.consben.matrix)
+
+#And make one from consben/area
+area.matrix <- matrix(((cons.all.incre/1000000)/(area.all.incre/1000000)), nrow=length(unique(pu.df$LGA)))
+solutions.consben.area.matrix <- solutions*area.matrix
+solutions.consben.area.matrix[is.nan(solutions.consben.area.matrix)] <- 0
+consben.area.sol <- rowSums(solutions.consben.area.matrix)
+
+#Generate the results
+make.maps(outfoldermaps, scen)
+exp.vals(outfoldervals, scen)
+```
+
+
+
+
+
+
+##Scenario 1 cycling through different budgets
+```{r, include=FALSE}
+for (b in b.vec){
+scen <- "scenario1"
+df <- df.org[c("LGA", "NewPropID", "npv.mean", "admin.mean", "rank", "MeanAdopt", "LValHa", "koala_curr", "area")]
+colnames(df) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area")
+#We need to make all conservation values uniform, so we allocate a value of 1
+df$prob.property <- 1
+#Again, use the minimum npv value (for LGAs), this sets up for the next bit of the code which is #increments
+cost <- read.csv("./raw_data/bct_cost_data_26_7_22.csv")
+min(cost$Approx_tot_investment)
+df$npv <- 1126260
+#Run through the first of simulations - this is for the first npv increment
+df_new0 <- properties(df, sim)  
+df_new0 <- df_new0[rowSums(df_new0[])>0,]
+#Create NPV increments, with the min being the lowest NPV reported and the max being the highest. 
+#y is the number of increments, 65 increments equates to roughly increments of $1,000,000 
+y <- 65
+min_npv <- min(cost$Approx_tot_investment)
+max_npv <- max(cost$Approx_tot_investmen)
+incre <- (max_npv-min_npv)/y
+#Add new NPV values to the dataframe
+df$npv.min <- min_npv
+for(i in 1:y) {                                   # Head of for-loop
+  new <- rep(min_npv, nrow(df))                   # Create data for new column
+  df[ , ncol(df) + 1] <- new + incre*i            # Append new column
+  colnames(df)[ncol(df)] <- paste0("npv", i)      # Rename column name
+}
+#Now we need to run separate simulations for each LGA budget increment - this creates y new #dataframes
+
+##Create a new dataframe which has all puid's, so that new dataframes can be merged to this
+#This ensures that even if an LGA has no successful bids (ie. the bidders are higher than the NPV), we capture that in the optimisiaton
+#So we are merging everything to the complete set of LGA ids
+df.to.merge <- data.frame(puid = unique(df$puid))
+df_new0 <- merge(df.to.merge, df_new0, by = "puid", all = TRUE)
+
+#Create a new dataframe for each increment (y above)
+for (i in 1:y){
+  df1 <- df[c("puid", "NewPropID", paste0("npv", i), "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area")]
+  colnames(df1) <- c("puid", "NewPropID", "npv", "admin.cost", "property", "prob.property", "bid.price", "cons.benefit", "area")
+  df_new <- properties(df1, sim)  
+  assign(paste0("df_new", i), df_new)
+  merged <- merge(df.to.merge, get(paste0("df_new", i)), by = "puid", all = TRUE)
+  assign(paste0("df_new", i), merged)
+  assign(paste0("df_new", i), get(paste0("df_new", i))[rowSums(get(paste0("df_new", i))[])>0,])
+  assign(paste0("df_new", i), get(paste0("df_new", i))[get(paste0("df_new", i))$puid !=0,])
+}
+
+#Now set up and run the optimisation
+###Set up structures for the optimisation
+#Create matrix for constraint that says only 1 budget can be allocated per LGA
+#Create matrix where nrow and ncol = no. planning units
+df_new <- df_new[rowSums(df_new[])>1,]
+matrix_data=matrix(0,nrow=nrow(df_new),ncol=nrow(df_new))
+# assign value to 1
+diag(matrix_data)=1
+#We need as many replicates as there are cost incremements
+pu_matrix <- do.call(cbind, replicate(y+1,matrix_data, simplify=FALSE))
+#Join the NPV data to this matrix, for each cost increment
+#First make a long string of all costs
+#Start with the original
+npv.all.incre <- df_new0$npv
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  npv.all.incre <- c(npv.all.incre, get(df.name)$npv)
+  #Make the cost of the NA values so high that they would never be selected
+  npv.all.incre[is.na(npv.all.incre)] = 1000000000000000
+}
+
+#Join it to the planning unit matrix
+m <- rbind(pu_matrix, npv.all.incre)
+#Make sparse
+constr_matrix <- drop0(m, tol = 0)
+
+#Make a long string of all conservation benefit
+cons.all.incre <- df_new0$cons.benefit
+for (i in 1:y){
+  df.name <- paste0("df_new", i)
+  cons.all.incre <- c(cons.all.incre, get(df.name)$cons.benefit)
+  cons.all.incre[is.na(cons.all.incre)] = 0
+}
+
+#Set up and run the optimisation (to select priority planning units (LGA's))
+model <- list()
+#model$A <- matrix(c(data_frame_test$npv), nrow=1)
+#nrow needs to be the number of planning units/LGA's + 1 (the 1 is the data vector)
+model$A <- constr_matrix
+model$obj        <- cons.all.incre
+model$modelsense <- 'max'
+model$rhs        <- c(rep(1, nrow(constr_matrix)-1), b)
+model$sense      <- c(rep('<=',nrow(constr_matrix)-1),'<')
+model$vtype      <- c('B')
+
+params <- list(OutputFlag=0)
+
+#Run
+result <- gurobi(model, params)
+
+print('Solution:')
+print(result$objval)
+print(result$x)
+save(result, file=paste0(outfolder, "./", scen, "_", b, ".RData"))
+
+###Export the results
+#Load in base shp file for the planning units
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
+###Need to be super careful about indexing here
+#First create a solutions matrix to show which LGA was selected with which budget increment
+solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
+binary.sol <- rowSums(solutions)
+#FOR HEAT MAPS
+#Then put values to this solutions matrix so we can visualise the selected budget amounts
+budget.matrix <- matrix(npv.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.budget.matrix <- solutions*budget.matrix
+budget.sol <- rowSums(solutions.budget.matrix)
+#Do the same for conservation benefit
+consben.matrix <- matrix(cons.all.incre, nrow=length(unique(pu.df$LGA)))
+solutions.consben.matrix <- solutions*consben.matrix
+consben.sol <- rowSums(solutions.consben.matrix)
+
+#And make one from consben/area
+area.matrix <- matrix(((cons.all.incre/1000000)/(area.all.incre/1000000)), nrow=length(unique(pu.df$LGA)))
+solutions.consben.area.matrix <- solutions*area.matrix
+solutions.consben.area.matrix[is.nan(solutions.consben.area.matrix)] <- 0
+consben.area.sol <- rowSums(solutions.consben.area.matrix)
+
+#Generate the results
+make.maps(outfoldermaps, scen)
+exp.vals(outfoldervals, scen)
+}
+```
+
+
+
+
+
+##Diagnostic plots
+```{r, include=FALSE}
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
+##Get the summed aggregate of koala habitat in each LGA  
+  agg.cons <- aggregate(x = df.org$koala_curr.w, by = list(df.org$LGA), FUN = sum)
+  colnames(agg.cons) <- c("CADID", "koala_curr.w")
+  shp.pu.joined <- merge(shp.pu, agg.cons, by = "CADID")
+  shp.pu.joined[is.na(shp.pu.joined$koala_curr.w)] <- 0
+  
+  #Export the map
+  png(file=paste0(outfoldermaps, "./Conservation_benefit.png"), width=1000, height=1000)
+  par(mar=c(0,0,0,0))
+  #plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
+  #plot the polygons without colour
+  plot(shp.pu.joined)
+  # Set the palette
+  p <- colorRampPalette(c("white", "#009933", "#003300"))(128)
+  palette(p)
+  # Scale the values to the palette
+  vals <- shp.pu.joined$koala_curr.w
+  cols <- (vals - min(vals))/diff(range(vals))*127+1
+  plot(shp.pu.joined, col=cols)
+  
+  #Add a legend
+  levels <- unique(shp.pu.joined$koala_curr.w)
+  levels <- round(levels, digits=1)
+  levels <- sort(levels)
+  col.levels <- unique(cols)
+  col.levels <- sort(col.levels)
+  
+  # add a legend to your map
+  legend("topright",   # location of legend
+         legend = levels, # categories or elements to render in
+         # the legend
+         fill = col.levels, # color palette to use to fill objects in legend.
+         title = "Suitability weighted koala habitat km2",
+         bty = "n",
+         cex = 0.7)
+  cex <- 1
+  scaleBar(shp.pu, pos = "bottomleft",   
+           cex=1,
+           pt.cex = 1.1*cex,
+           seg.len=10*cex,
+           title.cex=cex,
+           outer=FALSE)
+  #suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
+  dev.off()
+  
+  
+###Plot the conservation benefit weighted by proportion that people would covent
+  shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
+###Get the summed aggregate of koala habitat in each LGA  
+  agg.cons <- aggregate(x = df.org$koala_curr.w*df.org$MeanProp, by = list(df.org$LGA), FUN = sum)
+  colnames(agg.cons) <- c("CADID", "koala_curr.w.prop")
+  shp.pu.joined <- merge(shp.pu, agg.cons, by = "CADID")
+  shp.pu.joined[is.na(shp.pu.joined$koala_curr.w.prop)] <- 0
+  
+  #Export the map
+  png(file=paste0(outfoldermaps, "./Conservation_benefit_prop_covent.png"), width=1000, height=1000)
+  par(mar=c(0,0,0,0))
+  #plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
+  #plot the polygons without colour
+  plot(shp.pu.joined)
+  # Set the palette
+  p <- colorRampPalette(c("white", "#009933", "#003300"))(128)
+  palette(p)
+  # Scale the values to the palette
+  vals <- shp.pu.joined$koala_curr.w.prop
+  cols <- (vals - min(vals))/diff(range(vals))*127+1
+  plot(shp.pu.joined, col=cols)
+  
+  #Add a legend
+  levels <- unique(shp.pu.joined$koala_curr.w.prop)
+  levels <- round(levels, digits=1)
+  levels <- sort(levels)
+  col.levels <- unique(cols)
+  col.levels <- sort(col.levels)
+  
+  # add a legend to your map
+  legend("topright",   # location of legend
+         legend = levels, # categories or elements to render in
+         # the legend
+         fill = col.levels, # color palette to use to fill objects in legend.
+         title = "Suitability weighted koala habitat km2",
+         bty = "n",
+         cex = 0.7)
+  cex <- 1
+  scaleBar(shp.pu, pos = "bottomleft",   
+           cex=1,
+           pt.cex = 1.1*cex,
+           seg.len=10*cex,
+           title.cex=cex,
+           outer=FALSE)
+  #suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
+  dev.off()
+  
+  
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###Difference map###
+```{r, include=FALSE}
+#setwd("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/")
+#Load in result data
+load("outputs_v7/scenario1_101500000.RData")
+solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
+binary.sol.1 <- rowSums(solutions)
+binary.sol.1 <- data.frame(df_new$puid, binary.sol.1)
+
+#scen <- "scenario2"
+#load(paste0(scen, ".RData"))
+load("outputs_v7/scenario2_101500000.RData")
+solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
+binary.sol.2 <- rowSums(solutions)
+binary.sol.2 <- data.frame(df_new$puid, binary.sol.2)
+
+sols <- merge(binary.sol.1, binary.sol.2)
+sols$rowsum <- sols$binary.sol.1*sols$binary.sol.2
+test <- binary.sol.1+binary.sol.2
+common <- test[test$binary.sol.1 == '2',]
+common <- common/2
+
+cols <- c("CADID","scen1","scen2","both")
+colnames(sols) <- cols
+
+png(file=paste0(outfoldermaps, "/diff_scen_1_2.png"), width=1000, height=1000)
+par(mar=c(0,0,0,0))
+#plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
+plot(shp.pu)
+merge <- merge(shp.pu, sols)
+merge[is.na(merge$scen1)] <- 0
+merge[is.na(merge$scen2)] <- 0
+merge[is.na(merge$both)] <- 0
+
+
+shp.onlyscen1 <- merge[merge$scen1 == "1",]
+plot(shp.onlyscen1, col = "mistyrose2", add = TRUE)
+shp.onlyscen2 <- merge[merge$scen2 == "1",]
+plot(shp.onlyscen2, col = "slategray2", add = TRUE)
+shp.common <- shp.pu[shp.pu$CADID %in% c(common$df_new.puid),]
+plot(shp.common, col = "seagreen3", add = TRUE)
+
+scaleBar(merge, pos = "bottomleft",   
+         cex=1,
+         pt.cex = 1.1*cex,
+         seg.len=10*cex,
+         title.cex=cex,
+         outer=FALSE)
+# #suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
+dev.off()
+```
+
+
+
+
+##Benefit over budget plot
+```{r, include=FALSE}
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "scenario1+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.scen1 <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "scenario2+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.scen2 <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "scenario3+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.scen3 <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+# df <- data.frame(rep(b.vec, 3), c(all.consben.scen1, all.consben.scen2, all.consben.scen3), c(rep("Scenario1", 10), rep("Scenario2", 10), rep("Scenario3", 10)))
+# colnames(df) <- c("Budget", "Consben", "Scenario")
+
+#cccma_cgcm31
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "cccma_cgcm31+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.cccma_cgcm31 <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#ccsr_miroc32hi
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "ccsr_miroc32hi+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.ccsr_miroc32hi <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#ccsr_miroc32med
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "ccsr_miroc32med+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.ccsr_miroc32med <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#cnrm_cm3
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "cnrm_cm3+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.cnrm_cm3 <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#csiro_mk30
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "csiro_mk30+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.csiro_mk30 <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#gfdl_cm20
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "gfdl_cm20+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.gfdl_cm20 <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#gfdl_cm21
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "gfdl_cm21+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.gfdl_cm21 <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#giss_modeleh
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "giss_modeleh+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.giss_modeleh <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#giss_modeler
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "giss_modeler+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.giss_modeler <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#iap_fgoals10g
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "iap_fgoals10g+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.iap_fgoals10g <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#inm_cm30
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "inm_cm30+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.inm_cm30 <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#ipsl_cm4
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "ipsl_cm4+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.ipsl_cm4 <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#mpi_echam5
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "mpi_echam5+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.mpi_echam5 <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#mri_cgcm232a
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "mri_cgcm232a+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.mri_cgcm232a <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#ncar_ccsm30
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "ncar_ccsm30+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.ncar_ccsm30 <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#ncar_pcm1
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "ncar_pcm1+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.ncar_pcm1 <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#ukmo_hadcm3
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "ukmo_hadcm3+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.ukmo_hadcm3 <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+#ukmo_hadgem1
+files <- list.files("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v7/vals_v7/", pattern = "ukmo_hadgem1+", full.names = T, recursive = TRUE)
+a <- read.csv(files[7])
+b <- read.csv(files[8])
+c <- read.csv(files[9])
+d <- read.csv(files[10])
+e <- read.csv(files[1])
+f <- read.csv(files[2])
+g <- read.csv(files[3])
+h <- read.csv(files[4])
+i <- read.csv(files[5])
+j <- read.csv(files[6])
+
+all.consben.ukmo_hadgem1 <- c(a$cons.ben, b$cons.ben, c$cons.ben, d$cons.ben, e$cons.ben, f$cons.ben, g$cons.ben, h$cons.ben, i$cons.ben, j$cons.ben)
+
+df <- data.frame(rep(b.vec, 21), c(all.consben.scen1, all.consben.scen2, all.consben.scen3, all.consben.cccma_cgcm31,all.consben.ccsr_miroc32hi, all.consben.ccsr_miroc32med, all.consben.cnrm_cm3, all.consben.csiro_mk30, all.consben.gfdl_cm20, all.consben.gfdl_cm21, all.consben.giss_modeleh, all.consben.giss_modeler, all.consben.iap_fgoals10g, all.consben.inm_cm30, all.consben.ipsl_cm4, all.consben.mpi_echam5, all.consben.mri_cgcm232a, all.consben.ncar_ccsm30, all.consben.ncar_pcm1, all.consben.ukmo_hadcm3, all.consben.ukmo_hadgem1), c(rep("Scenario1", 10), rep("Scenario2", 10), rep("Scenario3", 10), rep("cccma_cgcm31", 10), rep("ccsr_miroc32hi", 10), rep("ccsr_miroc32med", 10), rep("cnrm_cm3", 10), rep("csiro_mk30", 10), rep("gfdl_cm20", 10), rep("gfdl_cm21", 10), rep("giss_modeleh", 10), rep("giss_modeler", 10), rep("iap_fgoals10g", 10), rep("inm_cm30", 10), rep("ipsl_cm4", 10), rep("mpi_echam5", 10), rep("mri_cgcm232a", 10), rep("ncar_ccsm30", 10), rep("ncar_pcm1", 10), rep("ukmo_hadcm3", 10), rep("ukmo_hadcm1", 10)))
+
+colnames(df) <- c("Budget", "Consben", "Scenario")
+
+df$Budget <- df$Budget/1000000
+df$Consben <- df$Consben/1000000
+
+###Distance from the optimal solution is the value of the solution - all.consben.scen3
+
+df$Scenario <- factor(df$Scenario, levels = c('Scenario1', 'Scenario2', 'Scenario3', 'cccma_cgcm31', 'ccsr_miroc32hi', 'ccsr_miroc32med', 'cnrm_cm3', 'csiro_mk30', 'gfdl_cm20', 'gfdl_cm21', 'giss_modeleh', 'giss_modeler', 'iap_fgoals10g', 'inm_cm30', 'ipsl_cm4', 'mpi_echam5', 'mri_cgcm232a', 'ncar_ccsm30', 'ncar_pcm1', 'ukmo_hadcm3', 'ukmo_hadcm1'))
+
+library(ggplot2)
+p <- ggplot(df, aes(x = Budget, y = Consben, group = Scenario)) +
+  #colours
+  scale_color_manual(values=c("#548235", "red", "black", "#9A6324", "#469990", "#000075", "#f58231", "#ffe119", "#bfef45", "#42d4f4", "#4363d8", "#911eb4",       "#f032e6", "#fabed4", "#ffd8b1", "#fffac8", "#aaffc3", "#dcbeff", "#ffa07a", "pink", "#800000"))+
+  geom_line(aes(color = Scenario), size = 0.5) +
+  geom_point(aes(color = Scenario), size = 0)+
+  scale_fill_discrete(labels=c('test', 'Scenario2', 'Scenario3', 'cccma_cgcm31', 'ccsr_miroc32hi', 'ccsr_miroc32med', 'cnrm_cm3', 'csiro_mk30', 'gfdl_cm20',      'gfdl_cm21', 'giss_modeleh', 'giss_modeler', 'iap_fgoals10g', 'inm_cm30', 'ipsl_cm4', 'mpi_echam5', 'mri_cgcm232a', 'ncar_ccsm30', 'ncar_pcm1', 'ukmo_hadcm3',   'ukmo_hadcm1'))+
+  xlab("Budget M $AUD") +
+  ylab("Suitability-weighted koala habitat (km2)")+
+  geom_line(aes(color = Scenario), size = 1) +
+  geom_point(aes(color = Scenario), size = 0)+
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0))
+  
+  x <- p + theme(
+  legend.position="top",
+  legend.title=element_blank(),
+  axis.text.x=element_text(size=15),
+  axis.text.y=element_text(size=15),
+  axis.title.y = element_text(size = rel(1.8)),
+  axis.title.x = element_text(size = rel(1.8)), 
+  # Remove panel border
+  panel.border = element_blank(),  
+  # Remove panel grid lines
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  # Remove panel background
+  panel.background = element_blank(),
+  # Add axis line
+  axis.line = element_line(colour = "grey")+
+  #Remove grey from legend
+  theme_set(theme_bw() + theme(legend.key=element_blank())))
+
+ ggsave("df_lines_cons_incl.png",
+  x
+  )
+ 
+ ##No legend
+ p <- ggplot(df, aes(x = Budget, y = Consben, group = Scenario)) +
+  #colours
+  scale_color_manual(values=c("#548235", "red", "black", "#9A6324", "#469990", "#000075", "#f58231", "#ffe119", "#bfef45", "#42d4f4", "#4363d8", "#911eb4",       "#f032e6", "#fabed4", "#ffd8b1", "#fffac8", "#aaffc3", "#dcbeff", "#ffa07a", "pink", "#800000"))+
+  geom_line(aes(color = Scenario), size = 0.5) +
+  geom_point(aes(color = Scenario), size = 0)+
+  scale_fill_discrete(labels=c('test', 'Scenario2', 'Scenario3', 'cccma_cgcm31', 'ccsr_miroc32hi', 'ccsr_miroc32med', 'cnrm_cm3', 'csiro_mk30', 'gfdl_cm20',      'gfdl_cm21', 'giss_modeleh', 'giss_modeler', 'iap_fgoals10g', 'inm_cm30', 'ipsl_cm4', 'mpi_echam5', 'mri_cgcm232a', 'ncar_ccsm30', 'ncar_pcm1', 'ukmo_hadcm3',   'ukmo_hadcm1'))+
+  xlab("Budget M $AUD") +
+  ylab("Suitability-weighted koala habitat (km2)")+
+  geom_line(aes(color = Scenario), size = 1) +
+  geom_point(aes(color = Scenario), size = 0) +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0))
+  
+  x <- p + theme(
+  legend.position="none",
+  legend.title=element_blank(),
+  axis.text.x=element_text(size=15),
+  axis.text.y=element_text(size=15),
+  axis.title.y = element_text(size = rel(1.8)),
+  axis.title.x = element_text(size = rel(1.8)), 
+  # Remove panel border
+  panel.border = element_blank(),  
+  # Remove panel grid lines
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  # Remove panel background
+  panel.background = element_blank(),
+  # Add axis line
+  axis.line = element_line(colour = "grey")+
+  #Remove grey from legend
+  theme_set(theme_bw() + theme(legend.key=element_blank())))
+
+ ggsave("df_lines_cons_nolegend.png",
+  x
+  )
+
+ ##EXCLUDE THE CONSERVATION SCENARIO
+ 
+df.nocons <- data.frame(rep(b.vec, 20), c(all.consben.scen2, all.consben.scen3, all.consben.cccma_cgcm31,all.consben.ccsr_miroc32hi, all.consben.ccsr_miroc32med, all.consben.cnrm_cm3, all.consben.csiro_mk30, all.consben.gfdl_cm20, all.consben.gfdl_cm21, all.consben.giss_modeleh, all.consben.giss_modeler, all.consben.iap_fgoals10g, all.consben.inm_cm30, all.consben.ipsl_cm4, all.consben.mpi_echam5, all.consben.mri_cgcm232a, all.consben.ncar_ccsm30, all.consben.ncar_pcm1, all.consben.ukmo_hadcm3, all.consben.ukmo_hadgem1), c(rep("Scenario2", 10), rep("Scenario3", 10), rep("cccma_cgcm31", 10), rep("ccsr_miroc32hi", 10), rep("ccsr_miroc32med", 10), rep("cnrm_cm3", 10), rep("csiro_mk30", 10), rep("gfdl_cm20", 10), rep("gfdl_cm21", 10), rep("giss_modeleh", 10), rep("giss_modeler", 10), rep("iap_fgoals10g", 10), rep("inm_cm30", 10), rep("ipsl_cm4", 10), rep("mpi_echam5", 10), rep("mri_cgcm232a", 10), rep("ncar_ccsm30", 10), rep("ncar_pcm1", 10), rep("ukmo_hadcm3", 10), rep("ukmo_hadcm1", 10)))
+ 
+colnames(df.nocons) <- c("Budget", "Consben", "Scenario")
+
+df.nocons$Scenario <- factor(df.nocons$Scenario, levels = c('Scenario2', 'Scenario3', 'cccma_cgcm31', 'ccsr_miroc32hi', 'ccsr_miroc32med', 'cnrm_cm3', 'csiro_mk30', 'gfdl_cm20', 'gfdl_cm21', 'giss_modeleh', 'giss_modeler', 'iap_fgoals10g', 'inm_cm30', 'ipsl_cm4', 'mpi_echam5', 'mri_cgcm232a', 'ncar_ccsm30', 'ncar_pcm1', 'ukmo_hadcm3', 'ukmo_hadcm1'))
+
+df.nocons$Budget <- df.nocons$Budget/1000000
+df.nocons$Consben <- df.nocons$Consben/1000000
+
+ p <- ggplot(df.nocons, aes(x = Budget, y = Consben, group = Scenario)) +
+  #colours
+  scale_color_manual(values=c("red", "black", "#9A6324", "#469990", "#000075", "#f58231", "#ffe119", "#bfef45", "#42d4f4", "#4363d8", "#911eb4",       "#f032e6", "#fabed4", "#ffd8b1", "#fffac8", "#aaffc3", "#dcbeff", "#ffa07a", "pink", "#800000"))+
+  geom_line(aes(color = Scenario), size = 0.5) +
+  geom_point(aes(color = Scenario), size = 0)+
+  scale_fill_discrete(labels=c('test', 'Scenario2', 'Scenario3', 'cccma_cgcm31', 'ccsr_miroc32hi', 'ccsr_miroc32med', 'cnrm_cm3', 'csiro_mk30', 'gfdl_cm20',      'gfdl_cm21', 'giss_modeleh', 'giss_modeler', 'iap_fgoals10g', 'inm_cm30', 'ipsl_cm4', 'mpi_echam5', 'mri_cgcm232a', 'ncar_ccsm30', 'ncar_pcm1', 'ukmo_hadcm3',   'ukmo_hadcm1'))+
+  xlab("Budget M $AUD") +
+  ylab("Suitability-weighted koala habitat (km2)")+
+  geom_line(aes(color = Scenario), size = 1) +
+  geom_point(aes(color = Scenario), size = 0)
+  
+  x <- p + theme(
+  legend.position="non",
+  legend.title=element_blank(),
+  axis.text.x=element_text(size=15),
+  axis.text.y=element_text(size=15),
+  axis.title.y = element_text(size = rel(1.8)),
+  axis.title.x = element_text(size = rel(1.8)), 
+  # Remove panel border
+  panel.border = element_blank(),  
+  # Remove panel grid lines
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  # Remove panel background
+  panel.background = element_blank(),
+  # Add axis line
+  axis.line = element_line(colour = "grey")+
+  #Remove grey from legend
+  theme_set(theme_bw() + theme(legend.key=element_blank())))
+
+ ggsave("df_lines_nocons_nolegend.png",
+  x
+  )
+ 
+
+##DIFFERENCE PLOTS
+df.diff <- data.frame(rep(b.vec, 21), c(all.consben.scen1-all.consben.scen3, all.consben.scen2-all.consben.scen3, all.consben.scen3-all.consben.scen3, all.consben.cccma_cgcm31-all.consben.scen3,all.consben.ccsr_miroc32hi-all.consben.scen3, all.consben.ccsr_miroc32med-all.consben.scen3, all.consben.cnrm_cm3-all.consben.scen3, all.consben.csiro_mk30-all.consben.scen3, all.consben.gfdl_cm20-all.consben.scen3, all.consben.gfdl_cm21-all.consben.scen3, all.consben.giss_modeleh-all.consben.scen3, all.consben.giss_modeler-all.consben.scen3, all.consben.iap_fgoals10g-all.consben.scen3, all.consben.inm_cm30-all.consben.scen3, all.consben.ipsl_cm4-all.consben.scen3, all.consben.mpi_echam5-all.consben.scen3, all.consben.mri_cgcm232a-all.consben.scen3, all.consben.ncar_ccsm30-all.consben.scen3, all.consben.ncar_pcm1-all.consben.scen3, all.consben.ukmo_hadcm3-all.consben.scen3, all.consben.ukmo_hadgem1-all.consben.scen3), c(rep("Scenario1", 10), rep("Scenario2", 10), rep("Scenario3", 10), rep("cccma_cgcm31", 10), rep("ccsr_miroc32hi", 10), rep("ccsr_miroc32med", 10), rep("cnrm_cm3", 10), rep("csiro_mk30", 10), rep("gfdl_cm20", 10), rep("gfdl_cm21", 10), rep("giss_modeleh", 10), rep("giss_modeler", 10), rep("iap_fgoals10g", 10), rep("inm_cm30", 10), rep("ipsl_cm4", 10), rep("mpi_echam5", 10), rep("mri_cgcm232a", 10), rep("ncar_ccsm30", 10), rep("ncar_pcm1", 10), rep("ukmo_hadcm3", 10), rep("ukmo_hadcm1", 10)))
+
+colnames(df.diff) <- c("Budget", "Consben", "Scenario")
+
+df.diff$Scenario <- factor(df.diff$Scenario, levels = c('Scenario1', 'Scenario2', 'Scenario3', 'cccma_cgcm31', 'ccsr_miroc32hi', 'ccsr_miroc32med', 'cnrm_cm3', 'csiro_mk30', 'gfdl_cm20', 'gfdl_cm21', 'giss_modeleh', 'giss_modeler', 'iap_fgoals10g', 'inm_cm30', 'ipsl_cm4', 'mpi_echam5', 'mri_cgcm232a', 'ncar_ccsm30', 'ncar_pcm1', 'ukmo_hadcm3', 'ukmo_hadcm1'))
+ 
+df.diff$Budget <- df.diff$Budget/1000000
+df.diff$Consben <- df.diff$Consben/1000000
+
+library(ggplot2)
+p <- ggplot(df.diff, aes(x = Budget, y = Consben, group = Scenario)) +
+  #colours
+  scale_color_manual(values=c("#548235", "red", "black", "#9A6324", "#469990", "#000075", "#f58231", "#ffe119", "#bfef45", "#42d4f4", "#4363d8", "#911eb4",       "#f032e6", "#fabed4", "#ffd8b1", "#fffac8", "#aaffc3", "#dcbeff", "#ffa07a", "pink", "#800000"))+
+  geom_line(aes(color = Scenario), size = 0.5) +
+  geom_point(aes(color = Scenario), size = 0)+
+  scale_fill_discrete(labels=c('test', 'Scenario2', 'Scenario3', 'cccma_cgcm31', 'ccsr_miroc32hi', 'ccsr_miroc32med', 'cnrm_cm3', 'csiro_mk30', 'gfdl_cm20',      'gfdl_cm21', 'giss_modeleh', 'giss_modeler', 'iap_fgoals10g', 'inm_cm30', 'ipsl_cm4', 'mpi_echam5', 'mri_cgcm232a', 'ncar_ccsm30', 'ncar_pcm1', 'ukmo_hadcm3',   'ukmo_hadcm1'))+
+  xlab("Budget M $AUD") +
+  ylab("Suitability-weighted koala habitat (km2)")+
+  geom_line(aes(color = Scenario), size = 1) +
+  geom_point(aes(color = Scenario), size = 0)
+  
+  x <- p + theme(
+  legend.position="none",
+  legend.title=element_blank(),
+  axis.text.x=element_text(size=15),
+  axis.text.y=element_text(size=15),
+  axis.title.y = element_text(size = rel(1.8)),
+  axis.title.x = element_text(size = rel(1.8)), 
+  # Remove panel border
+  panel.border = element_blank(),  
+  # Remove panel grid lines
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  # Remove panel background
+  panel.background = element_blank(),
+  # Add axis line
+  axis.line = element_line(colour = "grey")+
+  #Remove grey from legend
+  theme_set(theme_bw() + theme(legend.key=element_blank())))
+
+ ggsave("df_diff_lines_cons_incl.png",
+  x
+  ) 
+ 
+
+#Remove the cons scen - diff plot
+df.diff <- data.frame(rep(b.vec, 20), c(all.consben.scen2-all.consben.scen3, all.consben.scen3-all.consben.scen3, all.consben.cccma_cgcm31-all.consben.scen3,all.consben.ccsr_miroc32hi-all.consben.scen3, all.consben.ccsr_miroc32med-all.consben.scen3, all.consben.cnrm_cm3-all.consben.scen3, all.consben.csiro_mk30-all.consben.scen3, all.consben.gfdl_cm20-all.consben.scen3, all.consben.gfdl_cm21-all.consben.scen3, all.consben.giss_modeleh-all.consben.scen3, all.consben.giss_modeler-all.consben.scen3, all.consben.iap_fgoals10g-all.consben.scen3, all.consben.inm_cm30-all.consben.scen3, all.consben.ipsl_cm4-all.consben.scen3, all.consben.mpi_echam5-all.consben.scen3, all.consben.mri_cgcm232a-all.consben.scen3, all.consben.ncar_ccsm30-all.consben.scen3, all.consben.ncar_pcm1-all.consben.scen3, all.consben.ukmo_hadcm3-all.consben.scen3, all.consben.ukmo_hadgem1-all.consben.scen3), c(rep("Scenario2", 10), rep("Scenario3", 10), rep("cccma_cgcm31", 10), rep("ccsr_miroc32hi", 10), rep("ccsr_miroc32med", 10), rep("cnrm_cm3", 10), rep("csiro_mk30", 10), rep("gfdl_cm20", 10), rep("gfdl_cm21", 10), rep("giss_modeleh", 10), rep("giss_modeler", 10), rep("iap_fgoals10g", 10), rep("inm_cm30", 10), rep("ipsl_cm4", 10), rep("mpi_echam5", 10), rep("mri_cgcm232a", 10), rep("ncar_ccsm30", 10), rep("ncar_pcm1", 10), rep("ukmo_hadcm3", 10), rep("ukmo_hadcm1", 10)))
+
+colnames(df.diff) <- c("Budget", "Consben", "Scenario")
+
+df.diff$Scenario <- factor(df.diff$Scenario, levels = c('Scenario2', 'Scenario3', 'cccma_cgcm31', 'ccsr_miroc32hi', 'ccsr_miroc32med', 'cnrm_cm3', 'csiro_mk30', 'gfdl_cm20', 'gfdl_cm21', 'giss_modeleh', 'giss_modeler', 'iap_fgoals10g', 'inm_cm30', 'ipsl_cm4', 'mpi_echam5', 'mri_cgcm232a', 'ncar_ccsm30', 'ncar_pcm1', 'ukmo_hadcm3', 'ukmo_hadcm1'))
+ 
+df.diff$Budget <- df.diff$Budget/1000000
+df.diff$Consben <- df.diff$Consben/1000000
+
+library(ggplot2)
+p <- ggplot(df.diff, aes(x = Budget, y = Consben, group = Scenario)) +
+  #colours
+  scale_color_manual(values=c("red", "black", "#9A6324", "#469990", "#000075", "#f58231", "#ffe119", "#bfef45", "#42d4f4", "#4363d8", "#911eb4",       "#f032e6", "#fabed4", "#ffd8b1", "#fffac8", "#aaffc3", "#dcbeff", "#ffa07a", "pink", "#800000"))+
+  geom_line(aes(color = Scenario), size = 0.5) +
+  geom_point(aes(color = Scenario), size = 0)+
+  scale_fill_discrete(labels=c('Scenario2', 'Scenario3', 'cccma_cgcm31', 'ccsr_miroc32hi', 'ccsr_miroc32med', 'cnrm_cm3', 'csiro_mk30', 'gfdl_cm20',      'gfdl_cm21', 'giss_modeleh', 'giss_modeler', 'iap_fgoals10g', 'inm_cm30', 'ipsl_cm4', 'mpi_echam5', 'mri_cgcm232a', 'ncar_ccsm30', 'ncar_pcm1', 'ukmo_hadcm3',   'ukmo_hadcm1'))+
+  xlab("Budget M $AUD") +
+  ylab("Suitability-weighted koala habitat (km2)")+
+  geom_line(aes(color = Scenario), size = 1) +
+  geom_point(aes(color = Scenario), size = 0)
+  
+  x <- p + theme(
+  legend.position="none",
+  legend.title=element_blank(),
+  axis.text.x=element_text(size=15),
+  axis.text.y=element_text(size=15),
+  axis.title.y = element_text(size = rel(1.8)),
+  axis.title.x = element_text(size = rel(1.8)), 
+  # Remove panel border
+  panel.border = element_blank(),  
+  # Remove panel grid lines
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  # Remove panel background
+  panel.background = element_blank(),
+  # Add axis line
+  axis.line = element_line(colour = "grey")+
+  #Remove grey from legend
+  theme_set(theme_bw() + theme(legend.key=element_blank())))
+
+ ggsave("df_diff_lines_nocons.png",
+  x
+  ) 
+ 
+ 
+ 
+ 
+ 
+
+
+```
+
+
+
+
