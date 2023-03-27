@@ -13,6 +13,7 @@ library(remotes)
 library(climateStability)
 library(dplyr)
 library(stringr)
+library(foreign)
 
 setwd("E:/Linkage/DSF code/private_land_conservation_DSF/")
 
@@ -240,13 +241,14 @@ load("./preprocessing/pnts_risk_v3.RData")
 # save(prop_mean_cc, file="E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/prop_mean_cc.RData")
 # load("./preprocessing/prop_mean_cc.RData")
 
+
+##WE DON'T NEED THIS ANYMORE, SWITCHING TO REMP MODELS##
 #Current climate conditions
 cc_curr <- raster("E:/Linkage/Data/Climate change koala habitat/Phascolarctos_cinereus/Phascolarctos_cinereus/1km/realized/vet.suit.cur.asc")
 crs(cc_curr) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
 rast <- projectRaster(cc_curr, crs = crs)
 cc_curr_pnts <- extract(rast, points)
 save(cc_curr_pnts, file="E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/cc_curr_pnts.RData")
-
 
 #########Code to go through all cc scenarios#######
 setwd("E:/Linkage/Data/Climate change koala habitat/Phascolarctos_cinereus/Phascolarctos_cinereus/1km/dispersal/")
@@ -267,6 +269,29 @@ temp <- get(name)
 save(temp, file=paste0("E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/", name, ".RData"))
 }
 
+#Bring in REMP model data
+#Get the input file geodatabase
+fgdb <- "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb"
+# List all feature classes in a file geodatabase
+subset(ogrDrivers(), grepl("GDB", name))
+fc_list <- ogrListLayers(fgdb)
+print(fc_list)
+#Call them in one by one
+t0 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_Avg_t0")
+CCCMAR1t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_CCCMA_R1_t7")
+CCCMAR2t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_CCCMA_R2_t7")
+CCCMAR3t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_CCCMA_R3_t7")
+CSIROMAR1t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_CSIRO_R1_t7")
+CSIROMAR2t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_CSIRO_R2_t7")
+CSIROMAR3t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_CSIRO_R3_t7")
+ECHAMR1t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_ECHAM_R1_t7")
+ECHAMR2t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_ECHAM_R2_t7")
+ECHAMR3t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_ECHAM_R3_t7")
+MIROCR1t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_MIROC_R1_t7")
+MIROCR2t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_MIROC_R2_t7")
+MIROCR3t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_MIROC_R3_t7")
+t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_Avg_t7")
+
 ###IF EVERYTHING IS PROCESSED CAN SKIP TO HERE#########
 setwd("E:/Linkage/DSF code/private_land_conservation_DSF/")
 #Merge everything together to create the table
@@ -284,56 +309,143 @@ load("./preprocessing/dist_pa_prop.RData")
 load("./preprocessing/pnts_risk_v3.RData")
 load("./preprocessing/prop_mean_cc.RData")
 load("./preprocessing/defor.RData")
+properties_cov_rem <- readOGR("./preprocessing/Properties_NewPropID_cov_rem.shp")
+
 #cc 
-load("./preprocessing/cc_curr_pnts.RData")
-load("./preprocessing/pnts_koala_cccma_cgcm31.RData")
-pnts_koala_cccma_cgcm31 <- temp
-load("./preprocessing/pnts_koala_ccsr_miroc32hi.RData")
-pnts_koala_ccsr_miroc32hi <- temp
-load("./preprocessing/pnts_koala_ccsr_miroc32med.RData")
-pnts_koala_ccsr_miroc32med <- temp
-load("./preprocessing/pnts_koala_cnrm_cm3.RData")
-pnts_koala_cnrm_cm3 <- temp
-load("./preprocessing/pnts_koala_csiro_mk30.RData")
-pnts_koala_csiro_mk30 <- temp
-load("./preprocessing/pnts_koala_gfdl_cm20.RData")
-pnts_koala_gfdl_cm20 <- temp
-load("./preprocessing/pnts_koala_gfdl_cm21.RData")
-pnts_koala_gfdl_cm21 <- temp
-load("./preprocessing/pnts_koala_giss_modeleh.RData")
-pnts_koala_giss_modeleh <- temp
-load("./preprocessing/pnts_koala_giss_modeler.RData")
-pnts_koala_giss_modeler <- temp
-load("./preprocessing/pnts_koala_iap_fgoals10g.RData")
-pnts_koala_iap_fgoals10g <- temp
-load("./preprocessing/pnts_koala_inm_cm30.RData")
-pnts_koala_inm_cm30 <- temp
-load("./preprocessing/pnts_koala_ipsl_cm4.RData")
-pnts_koala_ipsl_cm4 <- temp
-load("./preprocessing/pnts_koala_mpi_echam5.RData")
-pnts_koala_mpi_echam5 <- temp
-load("./preprocessing/pnts_koala_mri_cgcm232a.RData")
-pnts_koala_mri_cgcm232a <- temp
-load("./preprocessing/pnts_koala_ncar_ccsm30.RData")
-pnts_koala_ncar_ccsm30 <- temp
-load("./preprocessing/pnts_koala_ncar_pcm1.RData")
-pnts_koala_ncar_pcm1 <- temp
-load("./preprocessing/pnts_koala_ukmo_hadcm3.RData")
-pnts_koala_ukmo_hadcm3 <- temp
-load("./preprocessing/pnts_koala_ukmo_hadgem1.RData")
-pnts_koala_ukmo_hadgem1 <- temp
+# load("./preprocessing/cc_curr_pnts.RData")
+# load("./preprocessing/pnts_koala_cccma_cgcm31.RData")
+# pnts_koala_cccma_cgcm31 <- temp
+# load("./preprocessing/pnts_koala_ccsr_miroc32hi.RData")
+# pnts_koala_ccsr_miroc32hi <- temp
+# load("./preprocessing/pnts_koala_ccsr_miroc32med.RData")
+# pnts_koala_ccsr_miroc32med <- temp
+# load("./preprocessing/pnts_koala_cnrm_cm3.RData")
+# pnts_koala_cnrm_cm3 <- temp
+# load("./preprocessing/pnts_koala_csiro_mk30.RData")
+# pnts_koala_csiro_mk30 <- temp
+# load("./preprocessing/pnts_koala_gfdl_cm20.RData")
+# pnts_koala_gfdl_cm20 <- temp
+# load("./preprocessing/pnts_koala_gfdl_cm21.RData")
+# pnts_koala_gfdl_cm21 <- temp
+# load("./preprocessing/pnts_koala_giss_modeleh.RData")
+# pnts_koala_giss_modeleh <- temp
+# load("./preprocessing/pnts_koala_giss_modeler.RData")
+# pnts_koala_giss_modeler <- temp
+# load("./preprocessing/pnts_koala_iap_fgoals10g.RData")
+# pnts_koala_iap_fgoals10g <- temp
+# load("./preprocessing/pnts_koala_inm_cm30.RData")
+# pnts_koala_inm_cm30 <- temp
+# load("./preprocessing/pnts_koala_ipsl_cm4.RData")
+# pnts_koala_ipsl_cm4 <- temp
+# load("./preprocessing/pnts_koala_mpi_echam5.RData")
+# pnts_koala_mpi_echam5 <- temp
+# load("./preprocessing/pnts_koala_mri_cgcm232a.RData")
+# pnts_koala_mri_cgcm232a <- temp
+# load("./preprocessing/pnts_koala_ncar_ccsm30.RData")
+# pnts_koala_ncar_ccsm30 <- temp
+# load("./preprocessing/pnts_koala_ncar_pcm1.RData")
+# pnts_koala_ncar_pcm1 <- temp
+# load("./preprocessing/pnts_koala_ukmo_hadcm3.RData")
+# pnts_koala_ukmo_hadcm3 <- temp
+# load("./preprocessing/pnts_koala_ukmo_hadgem1.RData")
+# pnts_koala_ukmo_hadgem1 <- temp
+
+#Bring in REMP model data
+#Get the input file geodatabase
+fgdb <- "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb"
+# List all feature classes in a file geodatabase
+subset(ogrDrivers(), grepl("GDB", name))
+fc_list <- ogrListLayers(fgdb)
+print(fc_list)
+#Call them in one by one
+t0 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_Avg_t0")
+CCCMAR1t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_CCCMA_R1_t7")
+CCCMAR2t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_CCCMA_R2_t7")
+CCCMAR3t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_CCCMA_R3_t7")
+CSIROMAR1t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_CSIRO_R1_t7")
+CSIROMAR2t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_CSIRO_R2_t7")
+CSIROMAR3t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_CSIRO_R3_t7")
+ECHAMR1t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_ECHAM_R1_t7")
+ECHAMR2t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_ECHAM_R2_t7")
+ECHAMR3t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_ECHAM_R3_t7")
+MIROCR1t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_MIROC_R1_t7")
+MIROCR2t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_MIROC_R2_t7")
+MIROCR3t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_MIROC_R3_t7")
+t7 <- sf::st_read(dsn = "R:/KPRIVATE19-A2212/data/remp_models_2023_properties/kitl_prop_unmasked.gdb", layer = "kitl_prop_Avg_t7")
 
 setwd("E:/Linkage/DSF code/private_land_conservation_DSF/")
 #Some of this can be tied together and some of it has to be merged
-pu.df <- data.frame(NewPropID=propid, area=area, risk = pnts_risk_v3, koala = cc_curr_pnts, cccma_cgcm31 = pnts_koala_cccma_cgcm31, ccsr_miroc32hi = pnts_koala_ccsr_miroc32hi, ccsr_miroc32med = pnts_koala_ccsr_miroc32med, cnrm_cm3 = pnts_koala_cnrm_cm3, csiro_mk30 = pnts_koala_csiro_mk30, gfdl_cm20 = pnts_koala_gfdl_cm20, gfdl_cm21 = pnts_koala_gfdl_cm21, giss_modeleh = pnts_koala_giss_modeleh, giss_modeler = pnts_koala_giss_modeler, iap_fgoals10g = pnts_koala_iap_fgoals10g, inm_cm30 = pnts_koala_inm_cm30, ipsl_cm4 = pnts_koala_ipsl_cm4, mpi_echam5 = pnts_koala_mpi_echam5, mri_cgcm232a = pnts_koala_mri_cgcm232a, ncar_ccsm30 = pnts_koala_ncar_ccsm30, ncar_pcm1 = pnts_koala_ncar_pcm1, ukmo_hadcm3 = pnts_koala_ukmo_hadcm3, ukmo_hadgem1 = pnts_koala_ukmo_hadgem1)
-colnames(pu.df) <- c("NewPropID", "area", "risk", "koala_curr", "cccma_cgcm31", "ccsr_miroc32hi", "ccsr_miroc32med", "cnrm_cm3", "csiro_mk30", "gfdl_cm20", "gfdl_cm21", "giss_modeleh", "giss_modeler", "iap_fgoals10g", "inm_cm30", "ipsl_cm4", "mpi_echam5", "mri_cgcm232a", "ncar_ccsm30", "ncar_pcm1", "ukmo_hadcm3", "ukmo_hadgem1")
+# pu.df <- data.frame(NewPropID=propid, area=area, risk = pnts_risk_v3, koala = cc_curr_pnts, cccma_cgcm31 = pnts_koala_cccma_cgcm31, ccsr_miroc32hi = pnts_koala_ccsr_miroc32hi, ccsr_miroc32med = pnts_koala_ccsr_miroc32med, cnrm_cm3 = pnts_koala_cnrm_cm3, csiro_mk30 = pnts_koala_csiro_mk30, gfdl_cm20 = pnts_koala_gfdl_cm20, gfdl_cm21 = pnts_koala_gfdl_cm21, giss_modeleh = pnts_koala_giss_modeleh, giss_modeler = pnts_koala_giss_modeler, iap_fgoals10g = pnts_koala_iap_fgoals10g, inm_cm30 = pnts_koala_inm_cm30, ipsl_cm4 = pnts_koala_ipsl_cm4, mpi_echam5 = pnts_koala_mpi_echam5, mri_cgcm232a = pnts_koala_mri_cgcm232a, ncar_ccsm30 = pnts_koala_ncar_ccsm30, ncar_pcm1 = pnts_koala_ncar_pcm1, ukmo_hadcm3 = pnts_koala_ukmo_hadcm3, ukmo_hadgem1 = pnts_koala_ukmo_hadgem1)
+# colnames(pu.df) <- c("NewPropID", "area", "risk", "koala_curr", "cccma_cgcm31", "ccsr_miroc32hi", "ccsr_miroc32med", "cnrm_cm3", "csiro_mk30", "gfdl_cm20", "gfdl_cm21", "giss_modeleh", "giss_modeler", "iap_fgoals10g", "inm_cm30", "ipsl_cm4", "mpi_echam5", "mri_cgcm232a", "ncar_ccsm30", "ncar_pcm1", "ukmo_hadcm3", "ukmo_hadgem1")
+# pu.df = pu.df[pu.df$NewPropID > 0,]
+# head(pu.df)
+
+pu.df <- data.frame(NewPropID=propid, area=area, risk = pnts_risk_v3)
+colnames(pu.df) <- c("NewPropID", "area", "risk")
 pu.df = pu.df[pu.df$NewPropID > 0,]
 head(pu.df)
+
+#t0/Baseline
+merged <- merge(pu.df, t0, by='NewPropID')
+merged <- merged[c("NewPropID", "area", "risk", "MEAN")]
+colnames(merged) <- c("NewPropID", "area", "risk", "t0")
+#CCCMAR1t7
+merged <- merge(merged, CCCMAR1t7, by='NewPropID')
+merged <- merged[c("NewPropID", "area", "risk", "t0", "MEAN")]
+colnames(merged) <- c("NewPropID", "area", "risk", "t0", "CCCMAR1t7")
+#CCCMAR2t7
+merged <- merge(merged, CCCMAR2t7, by='NewPropID')
+merged <- merged[c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "MEAN")]
+colnames(merged) <- c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7")
+#CCCMAR3t7
+merged <- merge(merged, CCCMAR3t7, by='NewPropID')
+merged <- merged[c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "MEAN")]
+colnames(merged) <- c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7")
+#CSIROMAR1t7
+merged <- merge(merged, CSIROMAR1t7, by='NewPropID')
+merged <- merged[c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "MEAN")]
+colnames(merged) <- c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7")
+#CSIROMAR2t7
+merged <- merge(merged, CSIROMAR2t7, by='NewPropID')
+merged <- merged[c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "MEAN")]
+colnames(merged) <- c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7")
+#CSIROMAR3t7
+merged <- merge(merged, CSIROMAR3t7, by='NewPropID')
+merged <- merged[c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "MEAN")]
+colnames(merged) <- c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7")
+#ECHAMR1t7
+merged <- merge(merged, ECHAMR1t7, by='NewPropID')
+merged <- merged[c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "MEAN")]
+colnames(merged) <- c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7")
+#ECHAMR2t7
+merged <- merge(merged, ECHAMR2t7, by='NewPropID')
+merged <- merged[c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7","MEAN")]
+colnames(merged) <- c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7", "ECHAMR2t7")
+#ECHAMR3t7
+merged <- merge(merged, ECHAMR3t7, by='NewPropID')
+merged <- merged[c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7", "ECHAMR2t7", "MEAN")]
+colnames(merged) <- c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7", "ECHAMR2t7", "ECHAMR3t7")
+#MIROCR1t7
+merged <- merge(merged, MIROCR1t7, by='NewPropID')
+merged <- merged[c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7", "ECHAMR2t7", "ECHAMR3t7", "MEAN")]
+colnames(merged) <- c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7", "ECHAMR2t7", "ECHAMR3t7", "MIROCR1t7")
+#MIROCR2t7
+merged <- merge(merged, MIROCR2t7, by='NewPropID')
+merged <- merged[c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7", "ECHAMR2t7", "ECHAMR3t7", "MIROCR1t7", "MEAN")]
+colnames(merged) <- c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7", "ECHAMR2t7", "ECHAMR3t7", "MIROCR1t7", "MIROCR2t7")
+#MIROCR3t7
+merged <- merge(merged, MIROCR3t7, by='NewPropID')
+merged <- merged[c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7", "ECHAMR2t7", "ECHAMR3t7", "MIROCR1t7", "MIROCR2t7", "MEAN")]
+colnames(merged) <- c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7", "ECHAMR2t7", "ECHAMR3t7", "MIROCR1t7", "MIROCR2t7", "MIROCR3t7")
+#t7/average
+merged <- merge(merged, t7, by='NewPropID')
+merged <- merged[c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7", "ECHAMR2t7", "ECHAMR3t7", "MIROCR1t7", "MIROCR2t7", "MIROCR3t7", "MEAN")]
+colnames(merged) <- c("NewPropID", "area", "risk", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7", "ECHAMR2t7", "ECHAMR3t7", "MIROCR1t7", "MIROCR2t7", "MIROCR3t7", "t7")
 
 #cond
 colnames(cond) <- c("NewPropID", "cond")
 cond = cond[cond$NewPropID > 0,]
-merged <- merge(pu.df, cond, by='NewPropID')
+merged <- merge(merged, cond, by='NewPropID')
 head(merged)
 #connect
 colnames(connect) <- c("NewPropID", "connect")
@@ -369,18 +481,18 @@ properties.dbf_LGA <- properties.dbf[c("NewPropID", "CADID")]
 #Remove duplicates
 properties.dbf_LGA <- properties.dbf_LGA[!duplicated(properties.dbf_LGA), ]
 merged <- merge(merged, properties.dbf_LGA, by='NewPropID')
-pu.df <- merged[c("CADID", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala_curr", "cccma_cgcm31", "ccsr_miroc32hi", "ccsr_miroc32med", "cnrm_cm3", "csiro_mk30", "gfdl_cm20", "gfdl_cm21", "giss_modeleh", "giss_modeler", "iap_fgoals10g", "inm_cm30", "ipsl_cm4", "mpi_echam5", "mri_cgcm232a", "ncar_ccsm30", "ncar_pcm1", "ukmo_hadcm3", "ukmo_hadgem1")]
+pu.df <- merged[c("CADID", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7", "ECHAMR2t7", "ECHAMR3t7", "MIROCR1t7", "MIROCR2t7", "MIROCR3t7", "t7")]
 #Add in area of koala habitat
-merged <- merge(koala, pu.df, by = "NewPropID")
-merged$koala_curr_adj <- merged$area*merged$MEAN
+#merged <- merge(koala, pu.df, by = "NewPropID")
+#merged$koala_curr_adj <- merged$area*merged$MEAN
 
 ##Add the koala/conservation values
 #merged <- merge(pu.df, koala, by='NewPropID')
 #pu.df <- pu.df[c("CADID", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "mean_cc", "koala", "defor")]
 #colnames(pu.df) <- c("LGA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala_curr", "cccma_cgcm31", "ccsr_miroc32hi", "ccsr_miroc32med", "cnrm_cm3", "csiro_mk30", "gfdl_cm20", "gfdl_cm21", "giss_modeleh", "giss_modeler", "iap_fgoals10g", "inm_cm30", "ipsl_cm4", "mpi_echam5", "mri_cgcm232a", "ncar_ccsm30", "ncar_pcm1", "ukmo_hadcm3", "ukmo_hadgem1")
 
-pu.df <- merged[c("CADID", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala_curr_adj", "koala_curr", "cccma_cgcm31", "ccsr_miroc32hi", "ccsr_miroc32med", "cnrm_cm3", "csiro_mk30", "gfdl_cm20", "gfdl_cm21", "giss_modeleh", "giss_modeler", "iap_fgoals10g", "inm_cm30", "ipsl_cm4", "mpi_echam5", "mri_cgcm232a", "ncar_ccsm30", "ncar_pcm1", "ukmo_hadcm3", "ukmo_hadgem1")]
-colnames(pu.df) <- c("LGA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala_area", "koala_curr", "cccma_cgcm31", "ccsr_miroc32hi", "ccsr_miroc32med", "cnrm_cm3", "csiro_mk30", "gfdl_cm20", "gfdl_cm21", "giss_modeleh", "giss_modeler", "iap_fgoals10g", "inm_cm30", "ipsl_cm4", "mpi_echam5", "mri_cgcm232a", "ncar_ccsm30", "ncar_pcm1", "ukmo_hadcm3", "ukmo_hadgem1")
+#pu.df <- merged[c("CADID", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala_curr_adj", "koala_curr", "cccma_cgcm31", "ccsr_miroc32hi", "ccsr_miroc32med", "cnrm_cm3", "csiro_mk30", "gfdl_cm20", "gfdl_cm21", "giss_modeleh", "giss_modeler", "iap_fgoals10g", "inm_cm30", "ipsl_cm4", "mpi_echam5", "mri_cgcm232a", "ncar_ccsm30", "ncar_pcm1", "ukmo_hadcm3", "ukmo_hadgem1")]
+#colnames(pu.df) <- c("LGA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala_area", "koala_curr", "cccma_cgcm31", "ccsr_miroc32hi", "ccsr_miroc32med", "cnrm_cm3", "csiro_mk30", "gfdl_cm20", "gfdl_cm21", "giss_modeleh", "giss_modeler", "iap_fgoals10g", "inm_cm30", "ipsl_cm4", "mpi_echam5", "mri_cgcm232a", "ncar_ccsm30", "ncar_pcm1", "ukmo_hadcm3", "ukmo_hadgem1")
 
 ####If we just want to optimise persistance (remp models) we don't need to do this
 # pu.df$koala_curr <- pu.df$koala_area*pu.df$koala_curr
@@ -483,32 +595,46 @@ pu.df$dist_pa[pu.df$dist_pa > 10000] <- 1
 pu.df$dist_pa[pu.df$dist_pa <= 0] <- 100 
 
 
-
 #Do the ranking formula
-pu.df$rank <- (pu.df$cond*pu.df$koala_curr*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+pu.df$rank.t0 <- (pu.df$cond*pu.df$t0*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
 
 ##Do the rank considering defor
 #pu.df$rank.defor <- (pu.df$cond*pu.df$koala.defor.calc*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
 
 ##Do the rank considering cc
-pu.df$rank.cccma_cgcm31 <- (pu.df$cond*pu.df$cccma_cgcm31*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.ccsr_miroc32hi <- (pu.df$cond*pu.df$ccsr_miroc32hi*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.ccsr_miroc32med <- (pu.df$cond*pu.df$ccsr_miroc32med*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.cnrm_cm3 <- (pu.df$cond*pu.df$cnrm_cm3*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.csiro_mk30 <- (pu.df$cond*pu.df$csiro_mk30*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.gfdl_cm20 <- (pu.df$cond*pu.df$gfdl_cm20*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.gfdl_cm21 <- (pu.df$cond*pu.df$gfdl_cm21*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.giss_modeleh <- (pu.df$cond*pu.df$giss_modeleh*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.giss_modeler <- (pu.df$cond*pu.df$giss_modeler*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.iap_fgoals10g <- (pu.df$cond*pu.df$iap_fgoals10g*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.inm_cm30 <- (pu.df$cond*pu.df$inm_cm30*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.ipsl_cm4 <- (pu.df$cond*pu.df$ipsl_cm4*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.mpi_echam5 <- (pu.df$cond*pu.df$mpi_echam5*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.mri_cgcm232a <- (pu.df$cond*pu.df$mri_cgcm232a*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.ncar_ccsm30 <- (pu.df$cond*pu.df$ncar_ccsm30*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.ncar_pcm1 <- (pu.df$cond*pu.df$ncar_pcm1*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.ukmo_hadcm3 <- (pu.df$cond*pu.df$ukmo_hadcm3*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
-pu.df$rank.ukmo_hadgem1 <- (pu.df$cond*pu.df$ukmo_hadgem1*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.cccma_cgcm31 <- (pu.df$cond*pu.df$cccma_cgcm31*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.ccsr_miroc32hi <- (pu.df$cond*pu.df$ccsr_miroc32hi*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.ccsr_miroc32med <- (pu.df$cond*pu.df$ccsr_miroc32med*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.cnrm_cm3 <- (pu.df$cond*pu.df$cnrm_cm3*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.csiro_mk30 <- (pu.df$cond*pu.df$csiro_mk30*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.gfdl_cm20 <- (pu.df$cond*pu.df$gfdl_cm20*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.gfdl_cm21 <- (pu.df$cond*pu.df$gfdl_cm21*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.giss_modeleh <- (pu.df$cond*pu.df$giss_modeleh*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.giss_modeler <- (pu.df$cond*pu.df$giss_modeler*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.iap_fgoals10g <- (pu.df$cond*pu.df$iap_fgoals10g*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.inm_cm30 <- (pu.df$cond*pu.df$inm_cm30*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.ipsl_cm4 <- (pu.df$cond*pu.df$ipsl_cm4*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.mpi_echam5 <- (pu.df$cond*pu.df$mpi_echam5*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.mri_cgcm232a <- (pu.df$cond*pu.df$mri_cgcm232a*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.ncar_ccsm30 <- (pu.df$cond*pu.df$ncar_ccsm30*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.ncar_pcm1 <- (pu.df$cond*pu.df$ncar_pcm1*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.ukmo_hadcm3 <- (pu.df$cond*pu.df$ukmo_hadcm3*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+# pu.df$rank.ukmo_hadgem1 <- (pu.df$cond*pu.df$ukmo_hadgem1*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
+
+##Do the rank considering cc
+pu.df$rank.CCCMAR1t7 <- ((pu.df$cond*pu.df$CCCMAR1t7*0.8)+((pu.df$connect+(pu.df$dist_cov/100)+(pu.df$dist_pa/100))*0.2))*1*pu.df$risk*pu.df$area
+pu.df$rank.CCCMAR2t7  <- ((pu.df$cond*pu.df$CCCMAR2t7*0.8)+((pu.df$connect+(pu.df$dist_cov/100)+(pu.df$dist_pa/100))*0.2))*1*pu.df$risk*pu.df$area
+pu.df$rank.CCCMAR3t7 <- ((pu.df$cond*pu.df$CCCMAR3t7*0.8)+((pu.df$connect+(pu.df$dist_cov/100)+(pu.df$dist_pa/100))*0.2))*1*pu.df$risk*pu.df$area
+pu.df$rank.CSIROMAR1t7 <- ((pu.df$cond*pu.df$CSIROMAR1t7*0.8)+((pu.df$connect+(pu.df$dist_cov/100)+(pu.df$dist_pa/100))*0.2))*1*pu.df$risk*pu.df$area
+pu.df$rank.CSIROMAR2t7 <- ((pu.df$cond*pu.df$CSIROMAR2t7*0.8)+((pu.df$connect+(pu.df$dist_cov/100)+(pu.df$dist_pa/100))*0.2))*1*pu.df$risk*pu.df$area
+pu.df$rank.CSIROMAR3t7 <- ((pu.df$cond*pu.df$CSIROMAR3t7*0.8)+((pu.df$connect+(pu.df$dist_cov/100)+(pu.df$dist_pa/100))*0.2))*1*pu.df$risk*pu.df$area
+pu.df$rank.ECHAMR1t7 <- ((pu.df$cond*pu.df$ECHAMR1t7*0.8)+((pu.df$connect+(pu.df$dist_cov/100)+(pu.df$dist_pa/100))*0.2))*1*pu.df$risk*pu.df$area
+pu.df$rank.ECHAMR2t7 <- ((pu.df$cond*pu.df$ECHAMR2t7*0.8)+((pu.df$connect+(pu.df$dist_cov/100)+(pu.df$dist_pa/100))*0.2))*1*pu.df$risk*pu.df$area
+pu.df$rank.ECHAMR3t7 <- ((pu.df$cond*pu.df$ECHAMR3t7*0.8)+((pu.df$connect+(pu.df$dist_cov/100)+(pu.df$dist_pa/100))*0.2))*1*pu.df$risk*pu.df$area
+pu.df$rank.MIROCR1t7 <- ((pu.df$cond*pu.df$MIROCR1t7*0.8)+((pu.df$connect+(pu.df$dist_cov/100)+(pu.df$dist_pa/100))*0.2))*1*pu.df$risk*pu.df$area
+pu.df$rank.MIROCR2t7 <- ((pu.df$cond*pu.df$MIROCR2t7*0.8)+((pu.df$connect+(pu.df$dist_cov/100)+(pu.df$dist_pa/100))*0.2))*1*pu.df$risk*pu.df$area
+pu.df$rank.MIROCR3t7 <- ((pu.df$cond*pu.df$MIROCR3t7*0.8)+((pu.df$connect+(pu.df$dist_cov/100)+(pu.df$dist_pa/100))*0.2))*1*pu.df$risk*pu.df$area
+pu.df$rank.t7 <- ((pu.df$cond*pu.df$t7*0.8)+((pu.df$connect+(pu.df$dist_cov/100)+(pu.df$dist_pa/100))*0.2))*1*pu.df$risk*pu.df$area
 
 ##Do the rank considering cc and deforestation
 # pu.df$rank.cccma_cgcm31.defor <- (pu.df$cond*pu.df$cccma_cgcm31.defor.calc*0.8)+((pu.df$connect+pu.df$dist_cov+pu.df$dist_pa)*0.2)*1*pu.df$risk*pu.df$area
@@ -569,28 +695,48 @@ merged$LValHa <- merged$LValHa*(merged$area/10000)
 #Merge with main dataframe
 #merged <- merge(pu.df, merged, by='NewPropID')
 #pu.df <- merged[c("LGA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala", "defor", "koala.defor.calc", "koala.defor.calc.cc", "rank", "rank.defor", "rank.cc.defor", "rank.cc", "MeanAdopt", "MeanWTA.tot", "MeanProp", "LValHa", "cccma_cgcm31", "ccsr_miroc32hi", "ccsr_miroc32med", "cnrm_cm3", "csiro_mk30", "gfdl_cm20", "gfdl_cm21", "giss_modeleh", "giss_modeler", "iap_fgoals10g", "inm_cm30", "ipsl_cm4", "mpi_echam5", "mri_cgcm232a", "ncar_ccsm30", "ncar_pcm1", "ukmo_hadcm3", "ukmo_hadgem1")]
-pu.df <- merged[c("LGA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala_area", "koala_curr", "rank", "cccma_cgcm31",  "rank.cccma_cgcm31", "ccsr_miroc32hi", "rank.ccsr_miroc32hi", "ccsr_miroc32med", "rank.ccsr_miroc32med", "cnrm_cm3", "rank.cnrm_cm3", "csiro_mk30",  "rank.csiro_mk30", "gfdl_cm20",  "rank.gfdl_cm20", "gfdl_cm21",  "rank.gfdl_cm21", "giss_modeleh",  "rank.giss_modeleh", "giss_modeler",  "rank.giss_modeler", "iap_fgoals10g",  "rank.iap_fgoals10g", "inm_cm30",  "rank.inm_cm30", "ipsl_cm4",  "rank.ipsl_cm4", "mpi_echam5",  "rank.mpi_echam5", "mri_cgcm232a",  "rank.mri_cgcm232a", "ncar_ccsm30",  "rank.ncar_ccsm30", "ncar_pcm1",  "rank.ncar_pcm1", "ukmo_hadcm3",  "rank.ukmo_hadcm3", "ukmo_hadgem1",  "rank.ukmo_hadgem1", "MeanAdopt", "MeanWTA.tot", "MeanProp", "LValHa")] 
+#pu.df <- merged[c("LGA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala_area", "koala_curr", "rank", "cccma_cgcm31",  "rank.cccma_cgcm31", "ccsr_miroc32hi", "rank.ccsr_miroc32hi", "ccsr_miroc32med", "rank.ccsr_miroc32med", "cnrm_cm3", "rank.cnrm_cm3", "csiro_mk30",  "rank.csiro_mk30", "gfdl_cm20",  "rank.gfdl_cm20", "gfdl_cm21",  "rank.gfdl_cm21", "giss_modeleh",  "rank.giss_modeleh", "giss_modeler",  "rank.giss_modeler", "iap_fgoals10g",  "rank.iap_fgoals10g", "inm_cm30",  "rank.inm_cm30", "ipsl_cm4",  "rank.ipsl_cm4", "mpi_echam5",  "rank.mpi_echam5", "mri_cgcm232a",  "rank.mri_cgcm232a", "ncar_ccsm30",  "rank.ncar_ccsm30", "ncar_pcm1",  "rank.ncar_pcm1", "ukmo_hadcm3",  "rank.ukmo_hadcm3", "ukmo_hadgem1",  "rank.ukmo_hadgem1", "MeanAdopt", "MeanWTA.tot", "MeanProp", "LValHa")] 
+#colnames(pu.df) <- c("LGA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala", "defor", "koala.defor.calc", "koala.defor.calc.cc", "rank", "rank.defor", "rank.cc", "rank.cc.defor", "prob.property", "bid.price", "MeanProp", "LValHa", "cccma_cgcm31", "ccsr_miroc32hi", "ccsr_miroc32med", "cnrm_cm3", "csiro_mk30", "gfdl_cm20", "gfdl_cm21", "giss_modeleh", "giss_modeler", "iap_fgoals10g", "inm_cm30", "ipsl_cm4", "mpi_echam5", "mri_cgcm232a", "ncar_ccsm30", "ncar_pcm1", "ukmo_hadcm3", "ukmo_hadgem1")
+pu.df <- merged[c("CADID", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "t0", "rank.t0", "CCCMAR1t7", "rank.CCCMAR1t7", "CCCMAR2t7", "rank.CCCMAR2t7", "CCCMAR3t7", "rank.CCCMAR3t7", "CSIROMAR1t7", "rank.CSIROMAR1t7", "CSIROMAR2t7", "rank.CSIROMAR2t7",  "CSIROMAR3t7", "rank.CSIROMAR3t7",  "ECHAMR1t7", "rank.ECHAMR1t7",  "ECHAMR2t7", "rank.ECHAMR2t7",  "ECHAMR3t7", "rank.ECHAMR3t7",  "MIROCR1t7", "rank.MIROCR1t7",  "MIROCR2t7", "rank.MIROCR2t7",  "MIROCR3t7", "rank.MIROCR3t7",  "t7", "rank.t7", "MeanAdopt", "MeanWTA.tot", "MeanProp", "LValHa")]
+
 #colnames(pu.df) <- c("LGA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala", "defor", "koala.defor.calc", "koala.defor.calc.cc", "rank", "rank.defor", "rank.cc", "rank.cc.defor", "prob.property", "bid.price", "MeanProp", "LValHa", "cccma_cgcm31", "ccsr_miroc32hi", "ccsr_miroc32med", "cnrm_cm3", "csiro_mk30", "gfdl_cm20", "gfdl_cm21", "giss_modeleh", "giss_modeler", "iap_fgoals10g", "inm_cm30", "ipsl_cm4", "mpi_echam5", "mri_cgcm232a", "ncar_ccsm30", "ncar_pcm1", "ukmo_hadcm3", "ukmo_hadgem1")
 
-pu.df$koala_curr.w <- pu.df$koala_curr*pu.df$MeanProp
-pu.df$cccma_cgcm31.w <- pu.df$cccma_cgcm31*pu.df$MeanProp
-pu.df$ccsr_miroc32hi.w <- pu.df$ccsr_miroc32hi*pu.df$MeanProp
-pu.df$ccsr_miroc32med.w <- pu.df$ccsr_miroc32med*pu.df$MeanProp
-pu.df$cnrm_cm3.w <- pu.df$cnrm_cm3*pu.df$MeanProp
-pu.df$csiro_mk30.w <- pu.df$csiro_mk30*pu.df$MeanProp
-pu.df$gfdl_cm20.w <- pu.df$gfdl_cm20*pu.df$MeanProp
-pu.df$gfdl_cm21.w <- pu.df$gfdl_cm21*pu.df$MeanProp
-pu.df$giss_modeleh.w <- pu.df$giss_modeleh*pu.df$MeanProp
-pu.df$giss_modeler.w <- pu.df$giss_modeler*pu.df$MeanProp
-pu.df$iap_fgoals10g.w <- pu.df$iap_fgoals10g*pu.df$MeanProp
-pu.df$inm_cm30.w <- pu.df$inm_cm30*pu.df$MeanProp
-pu.df$ipsl_cm4.w <- pu.df$ipsl_cm4*pu.df$MeanProp
-pu.df$mpi_echam5.w <- pu.df$mpi_echam5*pu.df$MeanProp
-pu.df$mri_cgcm232a.w <- pu.df$mri_cgcm232a*pu.df$MeanProp
-pu.df$ncar_ccsm30.w <- pu.df$ncar_ccsm30*pu.df$MeanProp
-pu.df$ncar_pcm1.w <- pu.df$ncar_pcm1*pu.df$MeanProp
-pu.df$ukmo_hadcm3.w <- pu.df$ukmo_hadcm3*pu.df$MeanProp
-pu.df$ukmo_hadgem1.w <- pu.df$ukmo_hadgem1*pu.df$MeanProp
+#Make all benefits proportional to what landowners would coven
+pu.df$t0.w <- pu.df$t0*pu.df$MeanProp
+pu.df$CCCMAR1t7.w <- pu.df$CCCMAR1t7*pu.df$MeanProp
+pu.df$CCCMAR2t7.w <- pu.df$CCCMAR2t7*pu.df$MeanProp
+pu.df$CCCMAR3t7.w <- pu.df$CCCMAR3t7*pu.df$MeanProp
+pu.df$CSIROMAR1t7.w <- pu.df$CSIROMAR1t7*pu.df$MeanProp
+pu.df$CSIROMAR2t7.w <- pu.df$CSIROMAR2t7*pu.df$MeanProp
+pu.df$CSIROMAR3t7.w <- pu.df$CSIROMAR3t7*pu.df$MeanProp
+pu.df$ECHAMR1t7.w <- pu.df$ECHAMR1t7*pu.df$MeanProp
+pu.df$ECHAMR2t7.w <- pu.df$ECHAMR2t7*pu.df$MeanProp
+pu.df$ECHAMR3t7.w <- pu.df$ECHAMR3t7*pu.df$MeanProp
+pu.df$MIROCR1t7.w <- pu.df$MIROCR1t7*pu.df$MeanProp
+pu.df$MIROCR2t7.w <- pu.df$MIROCR2t7*pu.df$MeanProp
+pu.df$MIROCR3t7.w <- pu.df$MIROCR3t7*pu.df$MeanProp
+pu.df$t7.w <- pu.df$t7*pu.df$MeanProp
+pu.df$area.w <- pu.df$area*pu.df$MeanProp
+
+# pu.df$koala_curr.w <- pu.df$koala_curr*pu.df$MeanProp
+# pu.df$cccma_cgcm31.w <- pu.df$cccma_cgcm31*pu.df$MeanProp
+# pu.df$ccsr_miroc32hi.w <- pu.df$ccsr_miroc32hi*pu.df$MeanProp
+# pu.df$ccsr_miroc32med.w <- pu.df$ccsr_miroc32med*pu.df$MeanProp
+# pu.df$cnrm_cm3.w <- pu.df$cnrm_cm3*pu.df$MeanProp
+# pu.df$csiro_mk30.w <- pu.df$csiro_mk30*pu.df$MeanProp
+# pu.df$gfdl_cm20.w <- pu.df$gfdl_cm20*pu.df$MeanProp
+# pu.df$gfdl_cm21.w <- pu.df$gfdl_cm21*pu.df$MeanProp
+# pu.df$giss_modeleh.w <- pu.df$giss_modeleh*pu.df$MeanProp
+# pu.df$giss_modeler.w <- pu.df$giss_modeler*pu.df$MeanProp
+# pu.df$iap_fgoals10g.w <- pu.df$iap_fgoals10g*pu.df$MeanProp
+# pu.df$inm_cm30.w <- pu.df$inm_cm30*pu.df$MeanProp
+# pu.df$ipsl_cm4.w <- pu.df$ipsl_cm4*pu.df$MeanProp
+# pu.df$mpi_echam5.w <- pu.df$mpi_echam5*pu.df$MeanProp
+# pu.df$mri_cgcm232a.w <- pu.df$mri_cgcm232a*pu.df$MeanProp
+# pu.df$ncar_ccsm30.w <- pu.df$ncar_ccsm30*pu.df$MeanProp
+# pu.df$ncar_pcm1.w <- pu.df$ncar_pcm1*pu.df$MeanProp
+# pu.df$ukmo_hadcm3.w <- pu.df$ukmo_hadcm3*pu.df$MeanProp
+# pu.df$ukmo_hadgem1.w <- pu.df$ukmo_hadgem1*pu.df$MeanProp
 
 # pu.df$koala.defor.calc.w <- pu.df$koala.defor.calc*pu.df$MeanProp
 # #pu.df$koala.defor.calc.cc.w <- pu.df$koala.defor.calc.cc*pu.df$MeanProp
@@ -615,8 +761,8 @@ pu.df$ukmo_hadgem1.w <- pu.df$ukmo_hadgem1*pu.df$MeanProp
 
 #checks
 #This should be zero
-list <- which(pu.df$area < pu.df$koala.w)
-list
+# list <- which(pu.df$area < pu.df$koala.w)
+# list
 
 ##Need to estimate the amount that would realistically be spent on each tender
 # cost <- read.csv("./raw_data/bct_agreement_cost.csv")
@@ -674,6 +820,8 @@ npv.df <- LGA_area[c("LGA", "npv.adj", "npv.mean", "admin.adj", "admin.mean")]
 # summary(lm(cost_mr$Approx_tot_investment ~ cost_mr$Conservation_area_ha))
 # plot(cost_mr$Approx_tot_investment ~ cost_mr$Conservation_area_ha)
 
+names(pu.df)[names(pu.df) == 'CADID'] <- 'LGA'
+
 merged <- merge(pu.df, npv.df, by='LGA')
 pu.df <- merged
 
@@ -686,9 +834,9 @@ pu.df <- pu.df[as.character(pu.df$NewPropID) %in% c(properties_cov_rem$NewPropID
 #test <- pu.df[pu.df$risk == '0.001',]
 pu.df <-filter(pu.df, risk != "0.001")
 
-save(pu.df, file="./preprocessing/pu.df_10.01.23.RData")
+save(pu.df, file="./preprocessing/pu.df_20.03.23.RData")
 write.csv(pu.df, file="./preprocessing/pu.df.csv")
-load("./preprocessing/pu.df_10.01.23.RData")
+load("./preprocessing/pu.df_20.03.23.RData")
 
 #Make the final df for the optimisation
 

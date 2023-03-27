@@ -403,10 +403,10 @@ foreach(d=split.df, b=1:length(split.df), .combine=c, .multicombine=TRUE, .packa
   
   #Get the total benefits (sum) and save the result of each simulation
   if (dim(df.tot.cost)[1]>0){
-    agg.benefits <- aggregate(x = df.tot.cost[c("prob.property","bid.price","cons.benefit", "area", "koala_area")], by = df.tot.cost[c("puid")], FUN = sum)
+    agg.benefits <- aggregate(x = df.tot.cost[c("prob.property","bid.price","cons.benefit", "area")], by = df.tot.cost[c("puid")], FUN = sum)
     agg.benefits$npv <- mean(df.tot.cost$npv)
     agg.benefits$admin.cost <- mean(df.tot.cost$admin.cost)
-    agg.benefits <- agg.benefits[c("puid", "npv", "admin.cost", "prob.property", "bid.price", "cons.benefit", "area", "koala_area")]
+    agg.benefits <- agg.benefits[c("puid", "npv", "admin.cost", "prob.property", "bid.price", "cons.benefit", "area")]
     result <- rbind(result, agg.benefits)
   } else {
     result <- rbind(result, df.tot.cost)
@@ -417,7 +417,7 @@ foreach(d=split.df, b=1:length(split.df), .combine=c, .multicombine=TRUE, .packa
   
   #Get the mean of all simulations
   if (nrow(result)[1]>0){
-    agg.result <- aggregate(x = result[c("npv","admin.cost", "prob.property","bid.price","cons.benefit", "area", "koala_area")], by = result[c("puid")], FUN = mean)
+    agg.result <- aggregate(x = result[c("npv","admin.cost", "prob.property","bid.price","cons.benefit", "area")], by = result[c("puid")], FUN = mean)
     df_final <- rbind(df_final, agg.result)
   } else {
     df_final <- rbind(df_final, result)
@@ -618,7 +618,7 @@ make.maps <- function(outfoldermaps, scen){
 }
 
 ###Code to get values
-exp.vals <- function(outfoldervals, scen){
+exp.vals.simtest <- function(outfoldervals, scen){
   
 # create folder:
 if (!dir.exists(outfoldervals)){
@@ -655,9 +655,52 @@ prob <- sum(solutions.prob.matrix)
 
 #Export the final 
 final.vals <- data.frame(scen = scen, cost = cost, cons.ben = cons, karea = karea, prob.bid = prob)
-write.csv(final.vals, file = paste0(outfoldervals, "./", scen, "_budget_", b, ".csv"), row.names = TRUE)
-
+write.csv(final.vals, file = paste0(outfoldervals, "./", scen, "_budget_", b, "_", q, ".csv"), row.names = TRUE)
 }
+
+
+###Code to get values - Simulation sensitivity analysis
+exp.vals <- function(outfoldervals, scen){
+  
+  # create folder:
+  if (!dir.exists(outfoldervals)){
+    dir.create(outfoldervals, recursive = TRUE)
+  } else {
+    print("Dir already exists!")
+  }
+  
+  #Total cost
+  cost <- sum(budget.sol)
+  
+  #Total cons benefit
+  cons.matrix <- matrix(cons.all.incre, nrow=length(unique(pu.df$LGA)))
+  solutions.cons.matrix <- solutions*cons.matrix
+  cons <- sum(solutions.cons.matrix)
+  
+  #Total cons benefit
+  karea.matrix <- matrix(karea.all.incre, nrow=length(unique(pu.df$LGA)))
+  solutions.karea.matrix<- solutions*karea.matrix
+  karea <- sum(solutions.karea.matrix)
+  
+  #Probability of a bid value
+  #Make a long string of all conservation benefit
+  prob.all.incre <- df_new0$prob.property
+  for (i in 1:y){
+    df.name <- paste0("df_new", i)
+    prob.all.incre <- c(prob.all.incre, get(df.name)$prob.property)
+    prob.all.incre[is.na(prob.all.incre)] = 1000000000000
+  }
+  
+  prob.matrix <- matrix(prob.all.incre, nrow=length(unique(pu.df$LGA)))
+  solutions.prob.matrix <- solutions*prob.matrix
+  prob <- sum(solutions.prob.matrix)
+  
+  #Export the final 
+  final.vals <- data.frame(scen = scen, cost = cost, cons.ben = cons, karea = karea, prob.bid = prob)
+  write.csv(final.vals, file = paste0(outfoldervals, "./", scen, "_budget_", b, ".csv"), row.names = TRUE)
+  
+}
+
 
 ###Code to get values
 exp.vals2 <- function(outfoldervals, scen){
