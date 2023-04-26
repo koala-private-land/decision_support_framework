@@ -178,7 +178,7 @@ properties.scen2 <- function(df, rep){
     
     #Start looping through the simulations
     #x <- 1
-    #rep <- 10
+    rep <- 10
     for (x in 1:rep){
       
       #To keep track of where it is up to
@@ -264,10 +264,10 @@ properties.scen2 <- function(df, rep){
       
       #Get the total benefits (sum) and save the result of each simulation
       if (dim(df.tot.cost)[1]>0){
-        agg.benefits <- aggregate(x = df.tot.cost[c("prob.property","bid.price","cons.benefit", "koala_curr.w", "area")], by = df.tot.cost[c("puid")], FUN = sum)
+        agg.benefits <- aggregate(x = df.tot.cost[c("prob.property","bid.price","cons.benefit", "area")], by = df.tot.cost[c("puid")], FUN = sum)
         agg.benefits$npv <- mean(df.tot.cost$npv)
         agg.benefits$admin.cost <- mean(df.tot.cost$admin.cost)
-        agg.benefits <- agg.benefits[c("puid", "npv", "admin.cost", "prob.property", "bid.price", "cons.benefit", "koala_curr.w", "area")]
+        agg.benefits <- agg.benefits[c("puid", "npv", "admin.cost", "prob.property", "bid.price", "koala_curr.w", "area")]
         result <- rbind(result, agg.benefits)
       } else {
         result <- rbind(result, df.tot.cost)
@@ -276,7 +276,7 @@ properties.scen2 <- function(df, rep){
     }
     #Get the mean of all simulations
     if (dim(result)[1]>0){
-      agg.result <- aggregate(x = result[c("npv","admin.cost", "prob.property","bid.price","cons.benefit", "koala_curr.w", "area")], by = result[c("puid")], FUN = mean)
+      agg.result <- aggregate(x = result[c("npv","admin.cost", "prob.property","bid.price","cons.benefit", "area")], by = result[c("puid")], FUN = mean)
       df_final <- rbind(df_final, agg.result)
     } else {
       df_final <- rbind(df_final, result)
@@ -289,6 +289,8 @@ properties.scen2 <- function(df, rep){
   #print("complete")
   
 }
+
+standard_error <- function(x) sd(x) / sqrt(length(x))
 
 ####Parallel processing function to run simulation and select properties in order up until the NPV constraint for scenario 2
 #Split.df needs to be a list of tables
@@ -317,9 +319,11 @@ properties.par <- function(split.df, rep){
   #Create new data structures for saving for each round
   df_new <- data.frame()
   df_final <- data.frame()
+  se.df <- data.frame()
+  sd.df <- data.frame()
 
 #Run the simulations and ranking process  
-foreach(d=split.df, b=1:length(split.df), .combine=c, .multicombine=TRUE, .packages=c("dplyr", "data.table", "stringi", "doParallel")) %do% {
+foreach(d=split.df, run=1:length(split.df), .combine=c, .multicombine=TRUE, .packages=c("dplyr", "data.table", "stringi", "doParallel")) %do% {
  #for (d in split.df) {
   #Create empty place to save result of the simulations
   result <- data.frame() 
@@ -415,6 +419,11 @@ foreach(d=split.df, b=1:length(split.df), .combine=c, .multicombine=TRUE, .packa
   
   }
   
+  se <- standard_error(result$cons.benefit)
+  se.df <- rbind(se.df, se)
+  sd <- sd(result$cons.benefit)
+  sd.df <- rbind(sd.df, sd)
+  
   #Get the mean of all simulations
   if (nrow(result)[1]>0){
     agg.result <- aggregate(x = result[c("npv","admin.cost", "prob.property","bid.price","cons.benefit", "area")], by = result[c("puid")], FUN = mean)
@@ -424,7 +433,10 @@ foreach(d=split.df, b=1:length(split.df), .combine=c, .multicombine=TRUE, .packa
   }
 
   #write.csv(df_final, paste0("./preprocessing/par/df_final", paste(b), ".csv"))
-  save(df_final, file = paste0("E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/par/df_final", paste(b), ".RData"))
+  save(df_final, file = paste0("E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/par/df_final", paste(run), ".RData"))
+  write.csv(se.df, file = paste0("E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/par/SE_", scen, "_", b, "_", paste(run), "_se.csv"))
+  write.csv(sd.df, file = paste0("E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/par/SD_", scen, "_", b, "_", paste(run), "_sd.csv"))
+  #write.csv(se.df, paste0(outfoldervals, "./", scen, "_SE_", b, "_", paste(run), ".csv"))
   
 }
 parallel::stopCluster(cl = my.cluster)
@@ -439,6 +451,14 @@ ll <- ll[1:length(ll)-1]
 file.remove(ll)
 load(paste0(pt, "df_final93.RData"))
 }
+
+ld.se <- function(pt){
+  ll <- list.files(path=pt, pattern = '.RData', full.names=TRUE)
+  ll <- ll[1:length(ll)-1]
+  file.remove(ll)
+  load(paste0(pt, "df_final93.RData"))
+}
+
 
 
 
@@ -617,7 +637,7 @@ make.maps <- function(outfoldermaps, scen){
   
 }
 
-###Code to get values
+###Code to get values - Simulation sensitivity analysis
 exp.vals.simtest <- function(outfoldervals, scen){
   
 # create folder:
@@ -658,8 +678,7 @@ final.vals <- data.frame(scen = scen, cost = cost, cons.ben = cons, karea = kare
 write.csv(final.vals, file = paste0(outfoldervals, "./", scen, "_budget_", b, "_", q, ".csv"), row.names = TRUE)
 }
 
-
-###Code to get values - Simulation sensitivity analysis
+###Code to get values
 exp.vals <- function(outfoldervals, scen){
   
   # create folder:
@@ -695,8 +714,18 @@ exp.vals <- function(outfoldervals, scen){
   solutions.prob.matrix <- solutions*prob.matrix
   prob <- sum(solutions.prob.matrix)
   
+  #Get a measure of SD
+  sd.matrix <- matrix(sd.all.incre, nrow=length(unique(pu.df$LGA)))
+  solutions.sd.matrix<- solutions*sd.matrix
+  st.dev <- mean(solutions.sd.matrix[solutions.sd.matrix>0])
+  
+  #Get a measure of SE
+  se.matrix <- matrix(se.all.incre, nrow=length(unique(pu.df$LGA)))
+  solutions.se.matrix<- solutions*se.matrix
+  s.err <- mean(solutions.se.matrix[solutions.se.matrix>0])
+  
   #Export the final 
-  final.vals <- data.frame(scen = scen, cost = cost, cons.ben = cons, karea = karea, prob.bid = prob)
+  final.vals <- data.frame(scen = scen, cost = cost, cons.ben = cons, karea = karea, prob.bid = prob, sd = st.dev, se = s.err)
   write.csv(final.vals, file = paste0(outfoldervals, "./", scen, "_budget_", b, ".csv"), row.names = TRUE)
   
 }
