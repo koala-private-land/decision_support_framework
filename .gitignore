@@ -4,6 +4,7 @@
 
 # Session Data files
 .RData
+.R
 
 # User-specific files
 .Ruserdata
@@ -39,8 +40,6 @@ vignettes/*.pdf
 .Renviron
 .Rproj.user
 
-/preprocessing_v2.R
-/postprocessing.R
 /pngs
 /archive
 /raw_data
