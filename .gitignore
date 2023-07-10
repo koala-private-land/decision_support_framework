@@ -60,3 +60,6 @@ vignettes/*.pdf
 /supp_tables
 /testing_npf_outfoldermaps.v1
 /code/archive
+/code/outputs_v9
+/code/postprocessing.R
+/code/working_code.R

@@ -35,11 +35,11 @@ setwd("E:/Linkage/DSF code/private_land_conservation_DSF/")
 #plot(properties)
 
 #Load dissolved property layer
-properties <- readOGR("./preprocessing/Properties_NewPropID.shp")
+properties <- readOGR("./preprocessing/Properties_NewPropID_19.shp")
 properties_cov_rem <- readOGR("./preprocessing/Properties_NewPropID_cov_rem.shp")
 crs <- proj4string(properties)
-save(properties, file = "./preprocessing/properties.RData")
-load("./preprocessing/properties.RData")
+save(properties, file = "./preprocessing/properties_v2.RData")
+load("./preprocessing/properties_v2.RData")
 
 #Read in the property shp file
 #properties <- readOGR("./raw_data/Properties/Properties.shp")
@@ -92,7 +92,7 @@ area <- pnts_properties$Shape_Area
 #Koala data, current
 #Had to do this zonal statistics in Arcmap - R couldn't handle it
 #This is with data from the KHAB
-koala <- read.csv("./preprocessing/propid_koalahabitat.csv")
+#koala <- read.csv("./preprocessing/propid_koalahabitat.csv")
 # khab_thresh <- raster("E:/Linkage/DSF code/private_land_conservation_DSF/raw_data/khab_thresh.tif")
 # koala_curr <- raster("E:/Linkage/Data/Climate change koala habitat/Phascolarctos_cinereus/Phascolarctos_cinereus/1km/realized/vet.suit.cur.asc")
 # crs(koala_curr) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
@@ -244,30 +244,30 @@ load("./preprocessing/pnts_risk_v3.RData")
 
 ##WE DON'T NEED THIS ANYMORE, SWITCHING TO REMP MODELS##
 #Current climate conditions
-cc_curr <- raster("E:/Linkage/Data/Climate change koala habitat/Phascolarctos_cinereus/Phascolarctos_cinereus/1km/realized/vet.suit.cur.asc")
-crs(cc_curr) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
-rast <- projectRaster(cc_curr, crs = crs)
-cc_curr_pnts <- extract(rast, points)
-save(cc_curr_pnts, file="E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/cc_curr_pnts.RData")
-
-#########Code to go through all cc scenarios#######
-setwd("E:/Linkage/Data/Climate change koala habitat/Phascolarctos_cinereus/Phascolarctos_cinereus/1km/dispersal/")
-file_list = list.files(pattern = ".asc$", full.names = T, recursive = TRUE)
-#r.stack <- raster::stack(file_list)
-#crs(r.stack) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
-for (i in 1:length(file_list)){
-rast<- raster(file_list[i])
-crs(rast) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
-rast <- projectRaster(rast, crs = crs)
-l <- gsub("./RCP85_", "", file_list[i])
-l <- gsub("/2085_realized.asc", "", l)
-text <- str_replace(l, "-", "_")
-name <- paste0("pnts_koala_", text)
-ext <- extract(rast, points)
-assign(paste0(name), ext)
-temp <- get(name)
-save(temp, file=paste0("E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/", name, ".RData"))
-}
+# cc_curr <- raster("E:/Linkage/Data/Climate change koala habitat/Phascolarctos_cinereus/Phascolarctos_cinereus/1km/realized/vet.suit.cur.asc")
+# crs(cc_curr) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+# rast <- projectRaster(cc_curr, crs = crs)
+# cc_curr_pnts <- extract(rast, points)
+# save(cc_curr_pnts, file="E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/cc_curr_pnts.RData")
+# 
+# #########Code to go through all cc scenarios#######
+# setwd("E:/Linkage/Data/Climate change koala habitat/Phascolarctos_cinereus/Phascolarctos_cinereus/1km/dispersal/")
+# file_list = list.files(pattern = ".asc$", full.names = T, recursive = TRUE)
+# #r.stack <- raster::stack(file_list)
+# #crs(r.stack) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+# for (i in 1:length(file_list)){
+# rast<- raster(file_list[i])
+# crs(rast) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+# rast <- projectRaster(rast, crs = crs)
+# l <- gsub("./RCP85_", "", file_list[i])
+# l <- gsub("/2085_realized.asc", "", l)
+# text <- str_replace(l, "-", "_")
+# name <- paste0("pnts_koala_", text)
+# ext <- extract(rast, points)
+# assign(paste0(name), ext)
+# temp <- get(name)
+# save(temp, file=paste0("E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/", name, ".RData"))
+# }
 
 #Bring in REMP model data
 #Get the input file geodatabase
@@ -300,15 +300,15 @@ load("./preprocessing/pnts_properties.RData")
 propid <- pnts_properties$NewPropID
 #This is m2
 area <- pnts_properties$Shape_Area
-koala <- read.csv("./preprocessing/propid_koalahabitat.csv")
-load("./preprocessing/pnts_koala.RData")
+#koala <- read.csv("./preprocessing/propid_koalahabitat.csv")
+#load("./preprocessing/pnts_koala.RData")
 load("./preprocessing/cond.RData")
 load("./preprocessing/connect.RData")
 load("./preprocessing/dist_cov_prop.RData")
 load("./preprocessing/dist_pa_prop.RData")
 load("./preprocessing/pnts_risk_v3.RData")
 load("./preprocessing/prop_mean_cc.RData")
-load("./preprocessing/defor.RData")
+#load("./preprocessing/defor.RData")
 properties_cov_rem <- readOGR("./preprocessing/Properties_NewPropID_cov_rem.shp")
 
 #cc 
@@ -475,13 +475,18 @@ head(merged)
 #colnames(pu.df) <- c("propid", "area", "risk", "cond", "connect", "dist_cov", "dist_pa", "sd_cc")
 
 ###Created this LGA intersected with properties layer in Arcmap 
-properties.dbf <- read.dbf("./preprocessing/LGA_properties_intersection_CADID_retained.dbf", as.is = FALSE)
+properties.dbf <- read.dbf("./preprocessing/Propid_and_LGAid.dbf", as.is = FALSE)
 #Pull out just LGA's
-properties.dbf_LGA <- properties.dbf[c("NewPropID", "CADID")]
-#Remove duplicates
-properties.dbf_LGA <- properties.dbf_LGA[!duplicated(properties.dbf_LGA), ]
+properties.dbf_LGA <- properties.dbf[c("NewPropID", "LGA")]
 merged <- merge(merged, properties.dbf_LGA, by='NewPropID')
-pu.df <- merged[c("CADID", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7", "ECHAMR2t7", "ECHAMR3t7", "MIROCR1t7", "MIROCR2t7", "MIROCR3t7", "t7")]
+pu.df <- merged[c("LGA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7", "ECHAMR2t7", "ECHAMR3t7", "MIROCR1t7", "MIROCR2t7", "MIROCR3t7", "t7")]
+
+##Add in the 19 priority koala areas
+nineteen_areas <- properties[c("NewPropID", "Invest_PPA")]
+merged <- merge(pu.df, nineteen_areas, by = "NewPropID")
+pu.df <- merged[c("LGA", "Invest_PPA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "t0", "CCCMAR1t7", "CCCMAR2t7", "CCCMAR3t7", "CSIROMAR1t7", "CSIROMAR2t7", "CSIROMAR3t7", "ECHAMR1t7", "ECHAMR2t7", "ECHAMR3t7", "MIROCR1t7", "MIROCR2t7", "MIROCR3t7", "t7")]
+
+
 #Add in area of koala habitat
 #merged <- merge(koala, pu.df, by = "NewPropID")
 #merged$koala_curr_adj <- merged$area*merged$MEAN
@@ -669,7 +674,7 @@ pu.df$rank.t7 <- ((pu.df$cond*pu.df$t7*0.8)+((pu.df$connect+(pu.df$dist_cov/100)
 #Join property data with probability predictions
 #probs <- read.csv("E:/Linkage/DSF code/private_land_conservation_DSF/raw_data/Probability/spatial_predictions_inf.csv")
 #Updated predictions
-probs <- read.csv("E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/bid_predictions/spatial_predictions_inf_v1.csv")
+probs <- read.csv("E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/bid_predictions/spatial_predictions_inf.csv")
 # properties_prob <- merge(LGA_prop_intersect.dbf, probs, by='CADID')
 # ####Need to turn bid price into total. WTA == $1000/ha/yr 
 # ###Be careful of areas - here I have converted m to ha
@@ -697,7 +702,7 @@ merged$LValHa <- merged$LValHa*(merged$area/10000)
 #pu.df <- merged[c("LGA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala", "defor", "koala.defor.calc", "koala.defor.calc.cc", "rank", "rank.defor", "rank.cc.defor", "rank.cc", "MeanAdopt", "MeanWTA.tot", "MeanProp", "LValHa", "cccma_cgcm31", "ccsr_miroc32hi", "ccsr_miroc32med", "cnrm_cm3", "csiro_mk30", "gfdl_cm20", "gfdl_cm21", "giss_modeleh", "giss_modeler", "iap_fgoals10g", "inm_cm30", "ipsl_cm4", "mpi_echam5", "mri_cgcm232a", "ncar_ccsm30", "ncar_pcm1", "ukmo_hadcm3", "ukmo_hadgem1")]
 #pu.df <- merged[c("LGA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala_area", "koala_curr", "rank", "cccma_cgcm31",  "rank.cccma_cgcm31", "ccsr_miroc32hi", "rank.ccsr_miroc32hi", "ccsr_miroc32med", "rank.ccsr_miroc32med", "cnrm_cm3", "rank.cnrm_cm3", "csiro_mk30",  "rank.csiro_mk30", "gfdl_cm20",  "rank.gfdl_cm20", "gfdl_cm21",  "rank.gfdl_cm21", "giss_modeleh",  "rank.giss_modeleh", "giss_modeler",  "rank.giss_modeler", "iap_fgoals10g",  "rank.iap_fgoals10g", "inm_cm30",  "rank.inm_cm30", "ipsl_cm4",  "rank.ipsl_cm4", "mpi_echam5",  "rank.mpi_echam5", "mri_cgcm232a",  "rank.mri_cgcm232a", "ncar_ccsm30",  "rank.ncar_ccsm30", "ncar_pcm1",  "rank.ncar_pcm1", "ukmo_hadcm3",  "rank.ukmo_hadcm3", "ukmo_hadgem1",  "rank.ukmo_hadgem1", "MeanAdopt", "MeanWTA.tot", "MeanProp", "LValHa")] 
 #colnames(pu.df) <- c("LGA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala", "defor", "koala.defor.calc", "koala.defor.calc.cc", "rank", "rank.defor", "rank.cc", "rank.cc.defor", "prob.property", "bid.price", "MeanProp", "LValHa", "cccma_cgcm31", "ccsr_miroc32hi", "ccsr_miroc32med", "cnrm_cm3", "csiro_mk30", "gfdl_cm20", "gfdl_cm21", "giss_modeleh", "giss_modeler", "iap_fgoals10g", "inm_cm30", "ipsl_cm4", "mpi_echam5", "mri_cgcm232a", "ncar_ccsm30", "ncar_pcm1", "ukmo_hadcm3", "ukmo_hadgem1")
-pu.df <- merged[c("CADID", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "t0", "rank.t0", "CCCMAR1t7", "rank.CCCMAR1t7", "CCCMAR2t7", "rank.CCCMAR2t7", "CCCMAR3t7", "rank.CCCMAR3t7", "CSIROMAR1t7", "rank.CSIROMAR1t7", "CSIROMAR2t7", "rank.CSIROMAR2t7",  "CSIROMAR3t7", "rank.CSIROMAR3t7",  "ECHAMR1t7", "rank.ECHAMR1t7",  "ECHAMR2t7", "rank.ECHAMR2t7",  "ECHAMR3t7", "rank.ECHAMR3t7",  "MIROCR1t7", "rank.MIROCR1t7",  "MIROCR2t7", "rank.MIROCR2t7",  "MIROCR3t7", "rank.MIROCR3t7",  "t7", "rank.t7", "MeanAdopt", "MeanWTA.tot", "MeanProp", "LValHa")]
+pu.df <- merged[c("LGA", "Invest_PPA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "t0", "rank.t0", "CCCMAR1t7", "rank.CCCMAR1t7", "CCCMAR2t7", "rank.CCCMAR2t7", "CCCMAR3t7", "rank.CCCMAR3t7", "CSIROMAR1t7", "rank.CSIROMAR1t7", "CSIROMAR2t7", "rank.CSIROMAR2t7",  "CSIROMAR3t7", "rank.CSIROMAR3t7",  "ECHAMR1t7", "rank.ECHAMR1t7",  "ECHAMR2t7", "rank.ECHAMR2t7",  "ECHAMR3t7", "rank.ECHAMR3t7",  "MIROCR1t7", "rank.MIROCR1t7",  "MIROCR2t7", "rank.MIROCR2t7",  "MIROCR3t7", "rank.MIROCR3t7",  "t7", "rank.t7", "MeanAdopt", "MeanWTA.tot", "MeanProp", "LValHa")]
 
 #colnames(pu.df) <- c("LGA", "NewPropID", "area", "cond", "connect", "risk", "dist_cov", "dist_pa", "koala", "defor", "koala.defor.calc", "koala.defor.calc.cc", "rank", "rank.defor", "rank.cc", "rank.cc.defor", "prob.property", "bid.price", "MeanProp", "LValHa", "cccma_cgcm31", "ccsr_miroc32hi", "ccsr_miroc32med", "cnrm_cm3", "csiro_mk30", "gfdl_cm20", "gfdl_cm21", "giss_modeleh", "giss_modeler", "iap_fgoals10g", "inm_cm30", "ipsl_cm4", "mpi_echam5", "mri_cgcm232a", "ncar_ccsm30", "ncar_pcm1", "ukmo_hadcm3", "ukmo_hadgem1")
 
@@ -777,15 +782,17 @@ pu.df$area.w <- pu.df$area*pu.df$MeanProp
 ##Using data from BCT
 cost <- read.csv("./raw_data/bct_cost_data_26_7_22.csv")
 #lga <- unique(pu.df$LGA)
+
+
 #Get the LGA areas
-properties.dbf <- read.dbf("./preprocessing/LGA_properties_intersection_CADID_retained.dbf", as.is = FALSE)
+properties.dbf <- read.dbf("./preprocessing/LGA_study_region_clip_project.dbf", as.is = FALSE)
 #Pull out just LGA's
-LGA_area <- properties.dbf[c("CADID", "Area_H")]
-LGA_area <- aggregate(LGA_area, by = list(LGA_area$CADID), FUN = "mean")
+LGA_area <- properties.dbf[c("LGA", "LGA_area")]
+LGA_area <- aggregate(LGA_area, by = list(LGA_area$LGA), FUN = "mean")
 #Remove duplicates
 LGA_area <- LGA_area[!duplicated(LGA_area), ]
-LGA_area_mean <- mean(LGA_area$Area_H)
-LGA_area$LGA_area_mean_multiplier <- LGA_area$Area_H/LGA_area_mean
+LGA_area_mean <- mean(LGA_area$LGA_area)
+LGA_area$LGA_area_mean_multiplier <- LGA_area$LGA_area/LGA_area_mean
 #npv_mean <- mean(cost$Approx_tot_investment)
 LGA_area$npv.mean <- mean(cost$Approx_tot_investment) 
 LGA_area$npv.adj <- LGA_area$npv.mean*LGA_area$LGA_area_mean_multiplier
@@ -834,9 +841,10 @@ pu.df <- pu.df[as.character(pu.df$NewPropID) %in% c(properties_cov_rem$NewPropID
 #test <- pu.df[pu.df$risk == '0.001',]
 pu.df <-filter(pu.df, risk != "0.001")
 
-save(pu.df, file="./preprocessing/pu.df_20.03.23.RData")
+#save(pu.df, file="./preprocessing/pu.df_11.05.23.RData")
+save(pu.df, file="./preprocessing/pu.df_03.07.23.RData")
 write.csv(pu.df, file="./preprocessing/pu.df.csv")
-load("./preprocessing/pu.df_20.03.23.RData")
+#load("./preprocessing/pu.df_11.05.23.RData")
 
 #Make the final df for the optimisation
 

@@ -133,16 +133,37 @@ setwd("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v4/")
 
 #Load in result data
 scen <- "scenario1"
-load(paste0(scen, ".RData"))
-solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
-binary.sol.1 <- rowSums(solutions)
-binary.sol.1 <- data.frame(df_new$puid, binary.sol.1)
+#load(paste0(scen, ".RData"))
+load("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v12/scenario1_101500000.RData")
+df <- df.org[c("LGA", "NewPropID","t0", "LValHa")]
+colnames(df) <- c("puid", "NewPropID", "consben", "cost")
+df$result <- result$x
+df <- subset(df, result == 1)
+#df.scen1.agg <- aggregate(x = df[c("consben", "cost", "area")], by = df[c("puid")], FUN = sum)
+df.scen1.agg <- aggregate(x = df[c("cost")], by = df[c("puid")], FUN = sum)
+# Rename the first column to "puid"
+colnames(pu.df)[1] <- "puid"
+df_test <- merge(pu.df, df.scen1.agg, by = "puid", all = TRUE)
+df_test$cost[is.na(df_test$cost)] <- 0
+df <- df_test[c("puid", "cost")]
+df <- aggregate(x = df[c("cost")], by = df[c("puid")], FUN = sum)
+df$cost[df$cost > 0] <- 1
+
+colnames(df)[2] <- "binary.sol.1"
+
+binary.sol.1 <- df
+
+# solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
+# binary.sol.1 <- rowSums(solutions)
+# binary.sol.1 <- data.frame(df_new$puid, binary.sol.1)
 
 scen <- "scenario2"
-load(paste0(scen, ".RData"))
-solutions <- matrix(result$x, nrow=length(unique(pu.df$LGA)))
+#load(paste0(scen, ".RData"))
+load("E:/Linkage/DSF code/private_land_conservation_DSF/outputs_v12/scenario2_101500000.RData")
+solutions <- matrix(result$x, nrow=length(unique(pu.df$puid)))
 binary.sol.2 <- rowSums(solutions)
-binary.sol.2 <- data.frame(df_new$puid, binary.sol.2)
+binary.sol.2 <- data.frame(unique(pu.df$puid), binary.sol.2)
+colnames(binary.sol.2)[1] <- "puid"
 
 sols <- merge(binary.sol.1, binary.sol.2)
 sols$rowsum <- sols$binary.sol.1*sols$binary.sol.2
@@ -153,7 +174,10 @@ common <- common/2
 cols <- c("CADID","scen1","scen2","both")
 colnames(sols) <- cols
 
-png(file=paste0(outfoldermaps, "/diff_scen_1_2.png"), width=1000, height=1000)
+setwd("E:/Linkage/DSF code/private_land_conservation_DSF/")
+shp.pu <- readOGR("./raw_data/LGAs_study_region_clip.shp")
+
+png(file=paste0("./", outfoldermaps, "/diff_scen_1_2.png"), width=1000, height=1000)
 par(mar=c(0,0,0,0))
 #plotRGB(b.bg, maxpixels=max(500000, 1000*1000), ext=extent(shp.pu), asp=TRUE)
 plot(shp.pu)
@@ -162,14 +186,13 @@ merge[is.na(merge$scen1)] <- 0
 merge[is.na(merge$scen2)] <- 0
 merge[is.na(merge$both)] <- 0
 
-
-shp.onlyscen1 <- merge[merge$scen1 == "1",]
+shp.onlyscen1 <- merge[merge$scen1 == "1" & merge$scen2 == 0,]
 plot(shp.onlyscen1, col = "mistyrose2", add = TRUE)
-shp.onlyscen2 <- merge[merge$scen2 == "1",]
+shp.onlyscen2 <- merge[merge$scen2 == "1" & merge$scen1 == 0,]
 plot(shp.onlyscen2, col = "slategray2", add = TRUE)
-shp.common <- shp.pu[shp.pu$CADID %in% c(common$df_new.puid),]
+shp.common <- shp.pu[shp.pu$CADID %in% c(common$puid),]
 plot(shp.common, col = "seagreen3", add = TRUE)
-
+cex = 1
 scaleBar(merge, pos = "bottomleft",   
          cex=1,
          pt.cex = 1.1*cex,
