@@ -44,6 +44,8 @@ vignettes/*.pdf
 /archive
 /raw_data
 /preprocessing
+/preprocessing_v2.R
+/cost.RData
 /outfoldermaps
 /outfoldermaps.v1
 /outfoldermaps.v2
@@ -56,6 +58,7 @@ vignettes/*.pdf
 /outputs_v11
 /outputs_v12
 /outputs_v13
+/outputs_v14
 /supp_tables
 /testing_npf_outfoldermaps.v1
 /code/archive
