@@ -36,10 +36,25 @@ setwd("E:/Linkage/DSF code/private_land_conservation_DSF/")
 
 #Load dissolved property layer
 properties <- readOGR("./preprocessing/Properties_NewPropID_19.shp")
+#Check that properties have been dissolved and all are unique
+# Use the table() function to count occurrences
+value_counts <- table(properties$NewPropID)
+# Find values that occur more than once
+values_more_than_once <- names(value_counts[value_counts > 1])
+# Print the values that occur more than once
+print(values_more_than_once)
 properties_cov_rem <- readOGR("./preprocessing/Properties_NewPropID_cov_rem.shp")
 crs <- proj4string(properties)
 save(properties, file = "./preprocessing/properties_v2.RData")
 load("./preprocessing/properties_v2.RData")
+
+
+
+
+
+
+
+
 
 #Read in the property shp file
 #properties <- readOGR("./raw_data/Properties/Properties.shp")

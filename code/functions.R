@@ -1,35 +1,3 @@
-# To create test dataset
-# #Each planning unit is an LGA
-# puid <- rep(c(1:20),each= 10)
-# npu <- length(puid)
-# #Ci is the Net present value of amount invested in a tender in planning unit i
-# npv <- rep(c(runif(c(1:20), min=500, max=8000)),each= 10)
-# #Ai is the administrative costs of running a tender in planning unit i.
-# admin.cost <- rep(runif(c(1:20), min=5, max=30), each = 10)
-# #property id - assumed to be in order of BCT ranking process
-# property <- c(1:npu)
-# #Iijk Bernoulli distributed probability that property j in planning unit i will put in a bid
-# prob.property <- runif(npu, min=0, max=1)
-# #pij net present value of the bid price of property j in planning unit i
-# bid.price <- runif(npu, min=0, max=2000)
-# #bij conservation benefit of each property
-# cons.benefit <- runif(npu, min=0, max=3000)
-# #Area in ha
-# area <- runif(npu, min=0, max=150)
-# #Tie it together to create dataframe
-# df <- data.frame(puid, npv, admin.cost, property, prob.property, bid.price, cons.benefit)
-# head(df)
-
-#Steps discussed with J
-#1. Select sites that put in an EOI
-#2. Rank EOIs based on BCT metric
-#3. Select top 30 for site assessment
-#4. Generate bid for top 30
-#5. Rank bids based on cost efficiency
-#5a. Generate the % of property covenented
-#6. Take top n bids until either 15 properties is reached or max budget is reached
-#7. Output property cost + environmental benefit + IDs
-
 ####Function to run simulation and select properties in order up until the NPV constraint
 properties <- function(df, rep){
   df_new <- data.frame()
@@ -290,8 +258,6 @@ properties.scen2 <- function(df, rep){
   
 }
 
-standard_error <- function(x) sd(x) / sqrt(length(x))
-
 ####Parallel processing function to run simulation and select properties in order up until the NPV constraint for scenario 2
 #Split.df needs to be a list of tables
 properties.par <- function(split.df, rep){
@@ -324,14 +290,10 @@ properties.par <- function(split.df, rep){
 
 #Run the simulations and ranking process  
 foreach(d=split.df, run=1:length(split.df), .combine=c, .multicombine=TRUE, .packages=c("dplyr", "data.table", "stringi", "doParallel")) %do% {
- #for (d in split.df) {
   #Create empty place to save result of the simulations
   result <- data.frame() 
   #Start looping through the simulations
-  #foreach (i=1:rep, .combine=rbind, .packages=c("dplyr", "data.table"))  %do% {
-  #rep <- 2
   for (i in 1:rep) {
-  #write.csv(i, file = "./preprocessing/iteration.csv")
   #1. Select sites that put in an EOI
   #If there is only 1 property in an LGA we assume they will put in an EOI 
   if (nrow(d) > 1){
@@ -366,7 +328,6 @@ foreach(d=split.df, run=1:length(split.df), .combine=c, .multicombine=TRUE, .pac
     rank.c.b <- rank.metric[order(-rank.metric$bcr),]
     rank.c.b <- rank.c.b[1:15,] 
     rank.c.b <- rank.c.b[-11]
-    #df1 <- select(df1, -bcr)
   } else {
     rank.metric$bcr <- rank.metric$property/rank.metric$bid.price
     rank.c.b <- rank.metric[order(-rank.metric$bcr),]
@@ -399,7 +360,6 @@ foreach(d=split.df, run=1:length(split.df), .combine=c, .multicombine=TRUE, .pac
       df.tot.cost <- df.tot.cost[which(df.tot.cost$csum < df.tot.cost[1,]$npv - df.tot.cost[1,]$admin.cost),]
       #remove cumulative sum column 
       df.tot.cost <- df.tot.cost[-11]
-      #df1 <- select(df1, -csum)
     }
   } else{
     df.tot.cost <- rank.c.b
@@ -415,7 +375,6 @@ foreach(d=split.df, run=1:length(split.df), .combine=c, .multicombine=TRUE, .pac
   } else {
     result <- rbind(result, df.tot.cost)
   }
-  #write.csv(result, paste0("./preprocessing/par/result", paste(i), ".csv"))
   
   }
   
@@ -432,33 +391,31 @@ foreach(d=split.df, run=1:length(split.df), .combine=c, .multicombine=TRUE, .pac
     df_final <- rbind(df_final, result)
   }
 
-  #write.csv(df_final, paste0("./preprocessing/par/df_final", paste(b), ".csv"))
-  save(df_final, file = paste0("E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/par/df_final", paste(run), ".RData"))
-  write.csv(se.df, file = paste0("E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/par/SE_", scen, "_", b, "_", paste(run), "_se.csv"))
-  write.csv(sd.df, file = paste0("E:/Linkage/DSF code/private_land_conservation_DSF/preprocessing/par/SD_", scen, "_", b, "_", paste(run), "_sd.csv"))
-  #write.csv(se.df, paste0(outfoldervals, "./", scen, "_SE_", b, "_", paste(run), ".csv"))
+  save(df_final, file = paste0("./preprocessing/par/df_final", paste(run), ".RData"))
+  write.csv(se.df, file = paste0("./preprocessing/par/SE_", scen, "_", b, "_", paste(run), "_se.csv"))
+  write.csv(sd.df, file = paste0("./preprocessing/par/SD_", scen, "_", b, "_", paste(run), "_sd.csv"))
   
 }
 parallel::stopCluster(cl = my.cluster)
 }
 
+standard_error <- function(x) sd(x) / sqrt(length(x))
+
 ##Function to delete all files and keep and load the one we want (the last one)
-#This is sort of a work around but parallel processing function doesn't save results in a single environment, 
-#so currently am exporting results for each loop
+#This is a work around as parallel processing function doesn't save results in a single environment, 
+#so this exports results for each loop
 ld <- function(pt){
 ll <- list.files(path=pt, pattern = '.RData', full.names=TRUE)
 ll <- ll[1:length(ll)-1]
 file.remove(ll)
 load(paste0(pt, "df_final93.RData"))
 }
-
 ld.se <- function(pt){
   ll <- list.files(path=pt, pattern = '.RData', full.names=TRUE)
   ll <- ll[1:length(ll)-1]
   file.remove(ll)
   load(paste0(pt, "df_final93.RData"))
 }
-
 
 #####Post processing functions#####
 make.maps <- function(outfoldermaps, scen){
@@ -481,12 +438,12 @@ make.maps <- function(outfoldermaps, scen){
   shp.pu.sub <- shp.pu[shp.pu$CADID %in% c(selected_pus_scen1),]
   plot(shp.pu.sub, col = "#8a2be2", add = TRUE)
   cex <- 1
-  scaleBar(shp.pu.sub, pos = "bottomleft",   
-           cex=1,
-           pt.cex = 1.1*cex,
-           seg.len=10*cex,
-           title.cex=cex,
-           outer=FALSE)
+  # scaleBar(shp.pu.sub, pos = "bottomleft",   
+  #          cex=1,
+  #          pt.cex = 1.1*cex,
+  #          seg.len=10*cex,
+  #          title.cex=cex,
+  #          outer=FALSE)
   #suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
   dev.off()
   
@@ -527,12 +484,12 @@ make.maps <- function(outfoldermaps, scen){
          bty = "n",
          cex = 1.2)
   cex <- 1
-  scaleBar(shp.pu.sub, pos = "bottomleft",   
-           cex=1,
-           pt.cex = 1.1*cex,
-           seg.len=10*cex,
-           title.cex=cex,
-           outer=FALSE)
+  # scaleBar(shp.pu.sub, pos = "bottomleft",   
+  #          cex=1,
+  #          pt.cex = 1.1*cex,
+  #          seg.len=10*cex,
+  #          title.cex=cex,
+  #          outer=FALSE)
   #suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
   dev.off()
   
@@ -576,12 +533,12 @@ make.maps <- function(outfoldermaps, scen){
          bty = "n",
          cex = 1.2)
   cex <- 1
-  scaleBar(shp.pu.sub, pos = "bottomleft",   
-           cex=1,
-           pt.cex = 1.1*cex,
-           seg.len=10*cex,
-           title.cex=cex,
-           outer=FALSE)
+  # scaleBar(shp.pu.sub, pos = "bottomleft",   
+  #          cex=1,
+  #          pt.cex = 1.1*cex,
+  #          seg.len=10*cex,
+  #          title.cex=cex,
+  #          outer=FALSE)
   #suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
   dev.off()
   
@@ -624,12 +581,12 @@ make.maps <- function(outfoldermaps, scen){
          bty = "n",
          cex = 1.2)
   cex <- 1
-  scaleBar(shp.pu.sub, pos = "bottomleft",   
-           cex=1,
-           pt.cex = 1.1*cex,
-           seg.len=10*cex,
-           title.cex=cex,
-           outer=FALSE)
+  # scaleBar(shp.pu.sub, pos = "bottomleft",   
+  #          cex=1,
+  #          pt.cex = 1.1*cex,
+  #          seg.len=10*cex,
+  #          title.cex=cex,
+  #          outer=FALSE)
   #suppressWarnings(plot(v.bnd, col="black", lwd=2, add=TRUE))
   dev.off()
   
@@ -881,7 +838,7 @@ exp.vals <- function(outfoldervals, scen){
   for (i in 1:y){
     df.name <- paste0("df_new", i)
     prob.all.incre <- c(prob.all.incre, get(df.name)$prob.property)
-    prob.all.incre[is.na(prob.all.incre)] = 1000000000000
+    prob.all.incre[is.na(prob.all.incre)] = 0
   }
   
   prob.matrix <- matrix(prob.all.incre, nrow=length(unique(pu.df$LGA)))
@@ -900,7 +857,7 @@ exp.vals <- function(outfoldervals, scen){
   
   #Get amount of budget allocated to each planning unit and export it
   pu.and.budget.to.save <- data.frame(df.to.merge$puid, budget.sol)
-  write.csv(pu.and.budget.to.save, file = paste0(outfoldervals, "./", scen, "_pu_vs_budget_", b, ".csv"), row.names = TRUE)
+  #write.csv(pu.and.budget.to.save, file = paste0(outfoldervals, "./", scen, "_pu_vs_budget_", b, ".csv"), row.names = TRUE)
   
   #Export the final 
   final.vals <- data.frame(scen = scen, cost = cost, cons.ben = cons, karea = karea, prob.bid = prob, sd = st.dev, se = s.err)
@@ -961,8 +918,6 @@ exp.vals.19areas <- function(outfoldervals, scen){
   write.csv(final.vals, file = paste0(outfoldervals, "./", scen, "_budget_", b, ".csv"), row.names = TRUE)
   
 }
-
-
 exp.vals.scen1 <- function(outfoldervals, scen){
   
   # create folder:
@@ -999,8 +954,6 @@ exp.vals.scen1 <- function(outfoldervals, scen){
   write.csv(final.vals, file = paste0(outfoldervals, "./", scen, "_budget_", b, ".csv"), row.names = TRUE)
   
 }
-
-
 
 ###Code to get values
 exp.vals2 <- function(outfoldervals, scen){
