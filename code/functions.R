@@ -58,7 +58,8 @@ properties <- function(df, rep){
       if (dim(rank.metric)[1] > 15) {
         rank.metric$bcr <- rank.metric$property/rank.metric$bid.price
         rank.c.b <- rank.metric[order(-rank.metric$bcr),]
-        rank.c.b <- rank.c.b[1:15,] 
+        #Not implementing this restriction anymore
+        #rank.c.b <- rank.c.b[1:15,] 
         rank.c.b <- rank.c.b[-10]
         #df1 <- select(df1, -bcr)
       } else {
@@ -66,7 +67,7 @@ properties <- function(df, rep){
         rank.c.b <- rank.metric[order(-rank.metric$bcr),]
         rank.c.b <- rank.c.b[-10]
       }
-      
+
       
       ###If y from above "selected" 0 properties, then we need to create a dataframe that only has 0s to avoid errors in the next bit of the code, and for calculating aggregated means
       if (nrow(rank.c.b)==0){
@@ -75,8 +76,8 @@ properties <- function(df, rep){
         rank.c.b <- rank.c.b 
       }
       
-      #5a. Generate the % of property covenented
-      #Already done in proprocessing code
+      #5a. Generate the % of property covenanted
+      #Already done in preprocessing code
       
       #Need to add a further constraint to ensure that the selected properties do not exceed the allocated funding for each LGA (NPV)
       #If the total sum of bids is greater than the allocated budget
@@ -326,7 +327,8 @@ foreach(d=split.df, run=1:length(split.df), .combine=c, .multicombine=TRUE, .pac
   if (dim(rank.metric)[1] > 15) {
     rank.metric$bcr <- rank.metric$property/rank.metric$bid.price
     rank.c.b <- rank.metric[order(-rank.metric$bcr),]
-    rank.c.b <- rank.c.b[1:15,] 
+    #Not implementing this anymore
+    #rank.c.b <- rank.c.b[1:15,] 
     rank.c.b <- rank.c.b[-11]
   } else {
     rank.metric$bcr <- rank.metric$property/rank.metric$bid.price
